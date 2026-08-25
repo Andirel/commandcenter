@@ -86,9 +86,11 @@ export function matchTask(
 ): MatchOutcome {
   // A provider thread id is near-proof: a reply on the same email thread is
   // the same activity, whatever the wording.
-  if (input.threadId && opts.threadTaskIds?.has(input.threadId)) {
-    const taskId = opts.threadTaskIds.get(input.threadId)!;
-    const task = openTasks.find((t) => t.id === taskId);
+  if (input.threadId) {
+    const taskId = opts.threadTaskIds?.get(input.threadId);
+    const task = taskId
+      ? openTasks.find((t) => t.id === taskId)
+      : openTasks.find((t) => t.sourceThreadId === input.threadId);
     if (task) {
       return {
         decision: 'UPDATE_EXISTING',

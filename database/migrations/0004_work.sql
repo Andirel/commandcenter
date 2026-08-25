@@ -93,6 +93,10 @@ create table if not exists tasks (
   follow_up_date            timestamptz,
 
   source_event_id           uuid references events(id) on delete set null,
+  -- Provider conversation key (mail conversationId, Slack thread_ts, Zoom
+  -- meeting UUID). Same-thread evidence is much stronger than a topical match,
+  -- for both deduplication and completion detection.
+  source_thread_id          text,
   confidence                numeric(4,3) not null default 0.700 check (confidence between 0 and 1),
 
   routing_reason            text,                     -- always populated; unexplained routing is a bug
@@ -122,6 +126,7 @@ create index if not exists tasks_deadline_idx      on tasks (deadline) where dea
 create index if not exists tasks_waiting_person_idx on tasks (waiting_on_person_id) where waiting_on_person_id is not null;
 create index if not exists tasks_waiting_org_idx   on tasks (waiting_on_organization_id) where waiting_on_organization_id is not null;
 create index if not exists tasks_initiative_idx    on tasks (initiative_id);
+create index if not exists tasks_thread_idx        on tasks (source_thread_id) where source_thread_id is not null;
 create index if not exists tasks_title_trgm        on tasks using gin (title gin_trgm_ops);
 create index if not exists tasks_ceo_idx           on tasks (ceo_required, ceo_action_mode) where ceo_required;
 

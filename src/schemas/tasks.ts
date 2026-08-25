@@ -64,6 +64,12 @@ export const Task = z.object({
   followUpDate: z.string().datetime().nullable().default(null),
 
   sourceEventId: z.string().nullable().default(null),
+  /**
+   * Provider conversation key (mail conversationId, Slack thread_ts, Zoom
+   * meeting UUID). Same-thread evidence is far stronger than a topical match,
+   * for both deduplication and completion detection.
+   */
+  sourceThreadId: z.string().nullable().default(null),
   confidence: Confidence.default(0.7),
   routingReason: z.string().nullable().default(null),
   approvalClass: ApprovalClass.default('YELLOW'),
