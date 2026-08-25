@@ -25,6 +25,8 @@ import { renderDailyBrief } from '../brief/render.js';
 import { findDueFollowUps } from '../followup/engine.js';
 import { readPnl, financeSignals, latestClosedIndex, findNode, money, pct } from '../signals/finance.js';
 import { parseSalesRows, salesTrend, commerceSignals } from '../signals/commerce.js';
+import { parseTrafficRows, trafficTrend, trafficSignals } from '../signals/traffic.js';
+import { parseFlowReport, summarizeEmail, emailSignals } from '../signals/email.js';
 import { RoutingRequest } from '../schemas/routing.js';
 import { Task } from '../schemas/tasks.js';
 
@@ -44,6 +46,8 @@ export {
   readPnl, financeSignals, latestClosedIndex, findNode, money, pct,
   buildDayPlan, estimateMinutes, blocksSomeone,
   parseSalesRows, salesTrend, commerceSignals,
+  parseTrafficRows, trafficTrend, trafficSignals,
+  parseFlowReport, summarizeEmail, emailSignals,
   RoutingRequest, Task,
 };
 

@@ -137,6 +137,24 @@ export const StateFinance = z.object({
   /** Order-level, unaffected by the accounting close. */
   dailySales: z.array(z.object({ day: z.string(), value: z.number() })).default([]),
   salesChangeRatio: z.number().nullable().default(null),
+
+  /** Site funnel. Compared in multi-week blocks; weekly counts are too noisy. */
+  traffic: z.object({
+    recentSessions: z.number(), priorSessions: z.number(),
+    recentRate: z.number(), priorRate: z.number(),
+    weeks: z.number().int(), sigma: z.number(),
+    weekly: z.array(z.object({ week: z.string(), sessions: z.number(), rate: z.number() })).default([]),
+  }).nullable().default(null),
+
+  /** Email judged on revenue per recipient, not open rate. */
+  email: z.object({
+    totalRevenue: z.number(), totalRecipients: z.number(),
+    windowDays: z.number().int().default(30),
+    flows: z.array(z.object({
+      name: z.string(), recipients: z.number(), revenue: z.number(),
+      revenuePerRecipient: z.number(), openRate: z.number(), clickRate: z.number(),
+    })).default([]),
+  }).nullable().default(null),
 }).nullable();
 export type StateFinance = z.infer<typeof StateFinance>;
 

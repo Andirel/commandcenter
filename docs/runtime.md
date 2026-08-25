@@ -198,10 +198,10 @@ cross-functional lift is the reason signals exist at all.
 
 ---
 
-## Three views, not one long page
+## Four views, not one long page
 
-`Today` · `Queue` · `Strategy`. Adding sections to a single page makes it
-longer; separating concerns makes each one answerable at a glance.
+`Today` · `Queue` · `Numbers` · `Strategy`. Adding sections to a single page
+makes it longer; separating concerns makes each one answerable at a glance.
 
 ### Today — the ordered plan
 
@@ -227,6 +227,36 @@ Two further rules:
 The plan is budgeted against the hours actually left. A plan needing nine hours
 at 15:00 is not a plan, and saying otherwise is how a daily tool stops being
 opened.
+
+### Numbers — the funnel and the money
+
+Three questions, in the order they constrain each other: **is traffic arriving**,
+**is it converting**, and **is the money that follows worth what we spend to get
+it**. Anything that does not answer one of those is not on the page.
+
+**Conversion rate is the trap.** A weekly rate moves several tenths of a point
+on noise alone, and a system that announces every wobble teaches its reader to
+ignore it. So `src/signals/traffic.ts` compares two four-week blocks and
+converts the gap into **standard errors** of a two-proportion difference,
+reporting nothing below a three-sigma floor. On 2026-08-25 conversion read 2.07%
+against a prior 1.71% — a 21% relative lift, and tempting — at **2.5 sigma**.
+Within chance. The page says so in words rather than drawing an arrow.
+
+What did clear the bar was quieter and worse: **ad spend up 23% against sessions
+flat at ~4,600/week**. Spending more to reach the same number of people is a
+conclusion worth a morning; a conversion wobble is not.
+
+**Email is ranked by revenue per recipient, not by open rate.** A 51% open rate
+on a flow earning $0.16 a recipient is a well-written email that does not sell.
+`src/signals/email.ts` compares each flow against the **highest-volume** flow —
+not the best-performing one — because the size of the prize is set by how many
+people the weak flow already reaches. On real data the spread ran 35x, from
+$6.54 to $0.16 per recipient, on roughly 2.8% of revenue. Flows under 50
+recipients are excluded: a $40 flow to 12 people is arithmetic, not a finding.
+
+Both feed the same signal bus as finance, so a conversion or email finding can
+lift a task in Today on its own. `tests/channel-signals.test.ts` covers the
+sigma floor, the volume comparison, and the zero-revenue and single-flow edges.
 
 ### Strategy — proposals that become work
 

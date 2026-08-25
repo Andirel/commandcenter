@@ -28,6 +28,7 @@
   var SLACK = 'Slack';
   var FINALOOP = 'My Finaloop MCP';
   var SHOPIFY = 'Shopify';
+  var KLAVIYO = 'Klaviyo';
 
   // ---------------------------------------------------------------------------
   // State. Embedded into the published HTML so corrections survive a reload.
@@ -325,7 +326,10 @@
     // Sections are independent: one failure must not blank the page.
     setConn(SLACK, 'busy', 'Slack');
     setConn(FINALOOP, 'busy', 'Finaloop');
-    var results = await Promise.allSettled([pullMail(), pullMeetings(), pullSlack(), pullBusiness()]);
+    setConn(KLAVIYO, 'busy', 'Klaviyo');
+    var results = await Promise.allSettled([
+      pullMail(), pullMeetings(), pullSlack(), pullBusiness(), pullEmail()
+    ]);
 
     var codes = results
       .filter(function (r) { return r.status === 'rejected'; })
@@ -338,7 +342,8 @@
       var pd = describeError({ code: codes[0] }, 'Your connectors');
       notice(pd.kind, pd.title, pd.detail, pd.retry ? [{ label: 'Try again', onClick: sync }] : null);
     } else {
-      var servers = [[MS365, 'Outlook'], [ZOOM, 'Zoom'], [SLACK, 'Slack'], [FINALOOP, 'Finaloop']];
+      var servers = [[MS365, 'Outlook'], [ZOOM, 'Zoom'], [SLACK, 'Slack'],
+                     [FINALOOP, 'Finaloop'], [KLAVIYO, 'Klaviyo']];
       results.forEach(function (r, i) {
         if (r.status !== 'rejected') return;
         var pair = servers[i];
@@ -540,6 +545,86 @@
       // Rate limits here are routine; the financial headline still stands.
       setConn(SHOPIFY, 'warn', 'Shopify · unavailable');
     }
+
+    // Funnel — the diagnostic that separates a traffic problem from a site one.
+    try {
+      var sessRes = await call(SHOPIFY, 'run-analytics-query', {
+        query: 'FROM sessions SHOW sessions, sessions_that_completed_checkout, conversion_rate TIMESERIES week SINCE -63d UNTIL today'
+      });
+      var sp2 = sessRes.payload;
+      if (typeof sp2 === 'string') { try { sp2 = JSON.parse(sp2); } catch (e) { sp2 = null; } }
+      if (sp2 && sp2.rows && sp2.rows.length) {
+        var tt = E.trafficTrend(E.parseTrafficRows(sp2), 4);
+        VIEW.finance.traffic = {
+          recentSessions: tt.recent.sessions, priorSessions: tt.prior.sessions,
+          recentRate: tt.recent.rate, priorRate: tt.prior.rate,
+          weeks: tt.recent.weeks, sigma: tt.conversionSigma,
+          weekly: tt.complete.map(function (w) {
+            return { week: w.week, sessions: w.sessions, rate: w.conversionRate };
+          })
+        };
+        VIEW.signals = VIEW.signals.concat(
+          E.trafficSignals(tt, { adSpendChangeRatio: adSpendDelta() }));
+      }
+    } catch (e) { /* funnel is a diagnostic, not a dependency */ }
+  }
+
+  /** Closed-month daily ad spend change, for the traffic comparison. */
+  function adSpendDelta() {
+    var f = VIEW.finance;
+    if (!f || !f.closed) return null;
+    var sig = (VIEW.signals || []).filter(function (s) { return s.signalType === 'roas_decline'; })[0];
+    return sig && sig.metadata ? (sig.metadata.adDelta || null) : null;
+  }
+
+  /**
+   * Email performance.
+   *
+   * Judged on revenue per recipient. Open rate measures whether a subject line
+   * worked; only money says whether the flow is worth sending.
+   */
+  async function pullEmail() {
+    var metrics = await call(KLAVIYO, 'get_metrics', {
+      model: 'claude-opus-5', fields_metric: ['name']
+    });
+    var mp = metrics.payload;
+    if (typeof mp === 'string') { try { mp = JSON.parse(mp); } catch (e) { mp = null; } }
+    var list = (mp && mp.result && mp.result.data) || (mp && mp.data) || [];
+    var placed = list.filter(function (m) {
+      return m.attributes && m.attributes.name === 'Placed Order';
+    })[0];
+    if (!placed) { setConn(KLAVIYO, 'warn', 'Klaviyo · no order metric'); return; }
+
+    var rep = await call(KLAVIYO, 'get_flow_report', {
+      model: 'claude-opus-5',
+      conversion_metric_id: placed.id,
+      statistics: ['recipients', 'conversions', 'conversion_rate', 'open_rate', 'click_rate'],
+      value_statistics: ['conversion_value'],
+      timeframe: { key: 'last_30_days' },
+      filters: 'and(equals(send_channel,"email"))'
+    });
+    var payload = rep.payload;
+    if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch (e) { payload = null; } }
+
+    var summary = E.summarizeEmail(E.parseFlowReport(payload));
+    if (!summary.flows.length) { setConn(KLAVIYO, 'warn', 'Klaviyo · no flow data'); return; }
+
+    if (!VIEW.finance) VIEW.finance = { closed: null, open: null, dailySales: [], salesChangeRatio: null };
+    VIEW.finance.email = {
+      totalRevenue: summary.totalRevenue,
+      totalRecipients: summary.totalRecipients,
+      windowDays: 30,
+      flows: summary.flows.map(function (f) {
+        return {
+          name: f.name, recipients: f.recipients, revenue: f.revenue,
+          revenuePerRecipient: f.revenuePerRecipient, openRate: f.openRate, clickRate: f.clickRate
+        };
+      })
+    };
+    VIEW.signals = VIEW.signals.concat(E.emailSignals(summary, {
+      totalBusinessRevenue: VIEW.finance.open ? VIEW.finance.open.netSales : null
+    }));
+    setConn(KLAVIYO, 'live', 'Klaviyo');
   }
 
   function iso(d) { return d.toISOString().slice(0, 10); }
@@ -716,6 +801,7 @@
     renderMeetings();
     renderWaiting();
     renderBusiness();
+    renderNumbers();
     renderSlack();
     renderTeam();
     renderPlan(rawState);
@@ -1306,6 +1392,189 @@
     showView('today');   // the point is the work, not the list
   }
 
+/* ===========================================================================
+   NUMBERS — how the business is doing
+   =========================================================================== */
+
+  function renderNumbers() {
+    var f = VIEW.finance || (DATA && DATA.finance) || null;
+    var signals = VIEW.signals.length ? VIEW.signals : ((DATA && DATA.signals) || []);
+    renderMoney(f);
+    renderFunnel(f);
+    renderEmail(f);
+    renderStandout(signals);
+  }
+
+  function renderMoney(f) {
+    var section = document.getElementById('n-money');
+    var body = bodyOf('n-money');
+    clear(body);
+    if (!f || !f.closed) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    section.querySelector('.note').textContent = f.closed.period + ' closed';
+
+    var c = f.closed;
+    var card = el('div', 'card');
+    var stats = el('div', 'stats');
+    stats.appendChild(stat('Net profit', E.money(c.netProfit),
+      c.priorNetProfit !== null ? c.priorPeriod + ' ' + E.money(c.priorNetProfit) : null,
+      c.netProfit < 0 ? 'neg' : 'pos'));
+    stats.appendChild(stat('Net sales', E.money(c.netSales),
+      c.priorDailyNetSales && c.dailyNetSales
+        ? perDayDelta(c.dailyNetSales, c.priorDailyNetSales) + ' per day' : null));
+    stats.appendChild(stat('Paid ads', E.money(c.paidAds), c.period));
+    stats.appendChild(stat('Daily sales', f.dailySales.length ? E.money(avgOf(f.dailySales)) : '—',
+      f.salesChangeRatio !== null
+        ? (f.salesChangeRatio >= 0 ? '+' : '−') + E.pct(f.salesChangeRatio) + ' vs prior week'
+        : 'live'));
+    card.appendChild(stats);
+    if (f.dailySales.length >= 4) card.appendChild(sparkline(f.dailySales));
+    if (f.open) {
+      var o = el('div', 'openmo');
+      o.appendChild(el('span', 'k', o_label(f.open)));
+      o.appendChild(el('span', 'v', E.money(f.open.netSales) + ' revenue'));
+      o.appendChild(el('span', 'n', closeNoteFor(f.open)));
+      card.appendChild(o);
+    }
+    body.appendChild(card);
+  }
+
+  /**
+   * The funnel, and the sentence that interprets it.
+   *
+   * Sessions and conversion together answer a question neither answers alone:
+   * whether more spend is failing to buy traffic, or traffic is failing to buy.
+   */
+  function renderFunnel(f) {
+    var section = document.getElementById('n-funnel');
+    var body = bodyOf('n-funnel');
+    clear(body);
+    var t = f && f.traffic;
+    if (!t) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    var card = el('div', 'card');
+    var fun = el('div', 'funnel');
+    var perWeek = Math.round(t.recentSessions / Math.max(1, t.weeks));
+    var priorWeek = Math.round(t.priorSessions / Math.max(1, t.weeks));
+    var checkouts = Math.round(t.recentSessions * t.recentRate);
+
+    fun.appendChild(fstep('Sessions', perWeek.toLocaleString(),
+      'a week · ' + deltaWord(perWeek, priorWeek)));
+    fun.appendChild(fstep('Checkouts', Math.round(checkouts / Math.max(1, t.weeks)).toLocaleString(), 'a week'));
+    fun.appendChild(fstep('Conversion', (t.recentRate * 100).toFixed(2) + '%',
+      'was ' + (t.priorRate * 100).toFixed(2) + '%'));
+    card.appendChild(fun);
+
+    // Say plainly whether the move is distinguishable from chance.
+    var line = el('div', 'verdict-line');
+    if (t.sigma < 3) {
+      line.appendChild(el('b', null, 'Conversion is holding. '));
+      line.appendChild(document.createTextNode(
+        'Weekly rates swing widely at this volume; across ' + t.weeks +
+        '-week blocks the difference is ' + t.sigma.toFixed(1) +
+        ' standard errors, which is within chance.'));
+    } else {
+      line.appendChild(el('b', null, 'Conversion has genuinely moved. '));
+      line.appendChild(document.createTextNode(
+        t.sigma.toFixed(1) + ' standard errors across ' + t.recentSessions.toLocaleString() +
+        ' sessions — too large to be sampling noise.'));
+    }
+    card.appendChild(line);
+    body.appendChild(card);
+  }
+
+  function fstep(k, v, d) {
+    var s = el('div', 'fstep');
+    s.appendChild(el('div', 'fk', k));
+    s.appendChild(el('div', 'fv', v));
+    if (d) s.appendChild(el('div', 'fd', d));
+    return s;
+  }
+
+  function deltaWord(now, prior) {
+    if (!prior) return '';
+    var r = (now - prior) / prior;
+    if (Math.abs(r) < 0.03) return 'flat';
+    return (r > 0 ? 'up ' : 'down ') + E.pct(r);
+  }
+
+  /** Flows ranked by revenue per recipient — the only measure that says "worth sending". */
+  function renderEmail(f) {
+    var section = document.getElementById('n-email');
+    var body = bodyOf('n-email');
+    clear(body);
+    var e = f && f.email;
+    if (!e || !e.flows.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    countOf('n-email').textContent = E.money(e.totalRevenue);
+
+    var ranked = e.flows.slice().sort(function (a, b) {
+      return b.revenuePerRecipient - a.revenuePerRecipient;
+    });
+    var max = ranked[0].revenuePerRecipient || 1;
+
+    var card = el('div', 'card');
+    ranked.slice(0, 8).forEach(function (fl) {
+      var row = el('div', 'flowrow');
+      var left = el('div');
+      left.appendChild(el('div', 'flowname', fl.name));
+      left.appendChild(el('div', 'flowsub',
+        fl.recipients.toLocaleString() + ' sends · ' +
+        Math.round(fl.openRate * 100) + '% open · ' + Math.round(fl.clickRate * 100) + '% click'));
+      var bar = el('div', 'flowbar');
+      if (fl.revenue === 0) bar.setAttribute('data-dead', '1');
+      var fill = el('span');
+      fill.style.width = Math.max(2, (fl.revenuePerRecipient / max) * 100) + '%';
+      bar.appendChild(fill);
+      left.appendChild(bar);
+      row.appendChild(left);
+      row.appendChild(el('div', 'flowval', '$' + fl.revenuePerRecipient.toFixed(2)));
+      card.appendChild(row);
+    });
+
+    var foot = el('div', 'verdict-line');
+    foot.appendChild(document.createTextNode(
+      E.money(e.totalRevenue) + ' from ' + e.totalRecipients.toLocaleString() +
+      ' sends over ' + e.windowDays + ' days. Bars show revenue per recipient, not opens.'));
+    card.appendChild(foot);
+    body.appendChild(card);
+  }
+
+  function renderStandout(signals) {
+    var section = document.getElementById('n-signals');
+    var body = bodyOf('n-signals');
+    clear(body);
+    if (!signals.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    countOf('n-signals').textContent = String(signals.length);
+    var card = el('div', 'card');
+    signals.slice(0, 8).forEach(function (sg) { card.appendChild(signalRow(sg)); });
+    body.appendChild(card);
+  }
+
+  function signalRow(sg) {
+    var row = el('div', 'sig');
+    var top = el('div', 'sig-top');
+    var dot = el('span', 'sev');
+    dot.setAttribute('data-s', sg.severity >= 7 ? 'high' : sg.severity >= 5 ? 'mid' : 'low');
+    top.appendChild(dot);
+    top.appendChild(el('span', 'sig-sum', sg.summary));
+    row.appendChild(top);
+    if (sg.evidence) row.appendChild(el('div', 'sig-ev', sg.evidence));
+    if (sg.recommendedAction) row.appendChild(el('div', 'sig-who', sg.recommendedAction));
+    return row;
+  }
+
+  function closeNoteFor(open) {
+    var days = Math.ceil((Date.parse(open.closesOn) - Date.now()) / 86400000);
+    var note = 'expenses not final until ' + open.closesOn;
+    if (days >= 0 && days <= 14) {
+      note += ' · ' + (days === 0 ? 'closing today' : days === 1 ? 'closes tomorrow' : 'closes in ' + days + ' days');
+    }
+    return note;
+  }
+
   function renderBusiness() {
     var section = document.getElementById('b-business');
     var body = bodyOf('b-business');
@@ -1624,7 +1893,7 @@
   // outstanding, and what the company could choose to take on.
   function showView(name) {
     STATE.view = name;
-    ['today', 'queue', 'strategy'].forEach(function (v) {
+    ['today', 'queue', 'numbers', 'strategy'].forEach(function (v) {
       var pane = document.getElementById('pane-' + v);
       if (pane) pane.classList.toggle('on', v === name);
     });

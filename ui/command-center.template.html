@@ -300,6 +300,30 @@ select {
 .gen-row .who { font-size: 11.5px; color: var(--ink-3); flex: none; }
 .prop-act { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
 
+/* --- numbers view ---------------------------------------------------------- */
+.numbers-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 26px; align-items: start; }
+@media (max-width: 900px) { .numbers-grid { grid-template-columns: minmax(0,1fr); } }
+#n-signals { grid-column: 1 / -1; }
+
+/* Funnel: three counts and the rate between them. */
+.funnel { display: flex; align-items: stretch; gap: 1px; background: var(--line-soft); border-radius: 4px; overflow: hidden; }
+.funnel .fstep { flex: 1; background: var(--surface); padding: 10px 12px; }
+.funnel .fk { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.funnel .fv { font-size: 18px; font-weight: 600; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.funnel .fd { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+.verdict-line { margin-top: 11px; font-size: 13px; color: var(--ink-2); }
+.verdict-line b { color: var(--ink); font-weight: 600; }
+
+/* Email flows: a bar per flow, length = revenue per recipient. */
+.flowrow { display: grid; grid-template-columns: minmax(0,1fr) 64px; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
+.flowrow:last-child { border-bottom: 0; }
+.flowname { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flowsub { font-size: 11.5px; color: var(--ink-3); }
+.flowbar { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 4px; }
+.flowbar span { display: block; height: 100%; background: var(--accent); }
+.flowbar[data-dead="1"] span { background: var(--crit); }
+.flowval { font-size: 13px; font-weight: 600; text-align: right; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+
 /* --- business panel -------------------------------------------------------- */
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line-soft); border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
 .stat { background: var(--surface); padding: 9px 11px; }
@@ -375,6 +399,7 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: 12px; backgrou
   <nav class="views" role="tablist" aria-label="View">
     <button class="view-btn" role="tab" data-view="today" aria-selected="true">Today</button>
     <button class="view-btn" role="tab" data-view="queue" aria-selected="false">Queue</button>
+    <button class="view-btn" role="tab" data-view="numbers" aria-selected="false">Numbers</button>
     <button class="view-btn" role="tab" data-view="strategy" aria-selected="false">Strategy</button>
   </nav>
 
@@ -398,6 +423,29 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: 12px; backgrou
         <span class="note">Didn't fit the hours left</span></div>
       <div class="body"></div>
     </section>
+  </div>
+
+  <div class="pane" id="pane-numbers">
+    <div class="numbers-grid">
+      <section class="block" id="n-money">
+        <div class="block-head"><h2>Money</h2><span class="count"></span><span class="note"></span></div>
+        <div class="body"><div class="empty">Sync to load.</div></div>
+      </section>
+      <section class="block" id="n-funnel">
+        <div class="block-head"><h2>Traffic and conversion</h2><span class="count"></span>
+          <span class="note">Four-week blocks</span></div>
+        <div class="body"><div class="empty">Sync to load.</div></div>
+      </section>
+      <section class="block" id="n-email">
+        <div class="block-head"><h2>Email, by revenue per recipient</h2><span class="count"></span>
+          <span class="note">Last 30 days</span></div>
+        <div class="body"><div class="empty">Sync to load.</div></div>
+      </section>
+      <section class="block" id="n-signals">
+        <div class="block-head"><h2>What stands out</h2><span class="count"></span></div>
+        <div class="body"></div>
+      </section>
+    </div>
   </div>
 
   <div class="pane" id="pane-strategy">

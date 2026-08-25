@@ -31,6 +31,8 @@ import { runSync } from '../src/sync/run.js';
 import { StateCommitment, StateMeeting, StateSignal, StateFinance, StateProposal } from '../src/sync/state.js';
 import { readPnl, financeSignals, latestClosedIndex, type PnlNode } from '../src/signals/finance.js';
 import { parseSalesRows, salesTrend, commerceSignals } from '../src/signals/commerce.js';
+import { parseTrafficRows, trafficTrend, trafficSignals } from '../src/signals/traffic.js';
+import { parseFlowReport, summarizeEmail, emailSignals } from '../src/signals/email.js';
 
 const args = process.argv.slice(2);
 const pullPath = args.find((a) => !a.startsWith('--'));
@@ -52,6 +54,8 @@ const pull = JSON.parse(readFileSync(resolve(pullPath), 'utf8')) as {
   proposals?: unknown[];
   finaloopPnl?: unknown;
   shopifySales?: { columns?: Array<{ name: string }>; rows?: unknown[][] };
+  shopifySessions?: { columns?: Array<{ name: string }>; rows?: unknown[][] };
+  klaviyoFlows?: unknown;
 };
 
 const config = loadConfig();
@@ -67,6 +71,9 @@ const proposals = (pull.proposals ?? []).map((p) => StateProposal.parse(p));
 const now = new Date();
 let signals: StateSignal[] = [];
 let finance: StateFinance = null;
+// Kept from the raw signal rather than read back off the parsed state shape,
+// which deliberately carries no metadata.
+let adSpendDelta: number | null = null;
 
 if (Array.isArray(pull.finaloopPnl)) {
   const closeDay = config.financeRules.books.close_day_of_month;
@@ -95,16 +102,54 @@ if (Array.isArray(pull.finaloopPnl)) {
   } : null;
 
   finance = StateFinance.parse({ closed, open, dailySales: [], salesChangeRatio: null });
-  signals = financeSignals(snap, {
+
+  const rawFinance = financeSignals(snap, {
     closeDay,
     uncategorizedFloor: config.financeRules.thresholds.uncategorized_floor,
-  }).map((s) => StateSignal.parse(s));
+  });
+  // Captured from the RAW signal: the state shape deliberately carries no
+  // metadata, so reading it back after parsing loses the figure.
+  adSpendDelta = (rawFinance.find((x) => x.signalType === 'roas_decline')?.metadata as
+    { adDelta?: number } | undefined)?.adDelta ?? null;
+  signals = rawFinance.map((x) => StateSignal.parse(x));
 }
 
 /** Date on which the given month's books close, ISO date. */
 function closesOn(label: string, closeDay: number): string {
   const [y, m] = label.split('-').map(Number);
   return new Date(Date.UTC(y!, m!, closeDay)).toISOString().slice(0, 10);
+}
+
+// Funnel: the diagnostic separating a traffic problem from a site problem.
+if (pull.shopifySessions?.rows?.length && finance) {
+  const tt = trafficTrend(parseTrafficRows(pull.shopifySessions), 4);
+  finance.traffic = {
+    recentSessions: tt.recent.sessions, priorSessions: tt.prior.sessions,
+    recentRate: tt.recent.rate, priorRate: tt.prior.rate,
+    weeks: tt.recent.weeks, sigma: tt.conversionSigma,
+    weekly: tt.complete.map((w) => ({ week: w.week, sessions: w.sessions, rate: w.conversionRate })),
+  };
+  signals = signals.concat(
+    trafficSignals(tt, { adSpendChangeRatio: adSpendDelta }).map((s) => StateSignal.parse(s)));
+}
+
+// Email, judged on revenue per recipient rather than open rate.
+if (pull.klaviyoFlows && finance) {
+  const summary = summarizeEmail(parseFlowReport(pull.klaviyoFlows));
+  if (summary.flows.length) {
+    finance.email = {
+      totalRevenue: summary.totalRevenue,
+      totalRecipients: summary.totalRecipients,
+      windowDays: 30,
+      flows: summary.flows.map((f) => ({
+        name: f.name, recipients: f.recipients, revenue: f.revenue,
+        revenuePerRecipient: f.revenuePerRecipient, openRate: f.openRate, clickRate: f.clickRate,
+      })),
+    };
+    signals = signals.concat(emailSignals(summary, {
+      totalBusinessRevenue: finance.open?.netSales ?? null,
+    }).map((s) => StateSignal.parse(s)));
+  }
 }
 
 if (pull.shopifySales?.rows?.length) {
