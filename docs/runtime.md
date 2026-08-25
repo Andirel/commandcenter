@@ -158,13 +158,36 @@ Finaloop reports **booked accounting figures**; Shopify reports **order-level
 activity**. They legitimately differ. Blending them produces a number that is
 true on neither basis, so the panel keeps them in separate tiles.
 
-### The partial-month rule
+### Two rules about when a number is true
 
-The running month is always incomplete. Comparing 24 days of August against 31
-of July shows a 23% sales "collapse" that is really six missing days. Every
-comparison runs on a **daily rate**, and any figure projected from an incomplete
-period is labelled a run-rate. `tests/finance-signals.test.ts` defends this
-directly — a brief that cries wolf once is never read carefully again.
+**The partial-month rule.** The running month is always incomplete. Comparing 24
+days of August against 31 of July shows a 23% sales "collapse" that is really
+six missing days. Every comparison runs on a **daily rate**.
+
+**The unclosed-books rule**, which matters more. 120/Life closes its books
+monthly, by the 10th of the following month (`config/finance-rules.yaml`). Until
+a month closes, its **expense** side is incomplete — bills not entered,
+transactions not categorized — so any profit figure from it is fiction dressed
+as fact.
+
+This is not pedantry. On 2026-08-25 the open month read as a **$53k loss with ad
+spend up 61%**. The closed months showed profit **improving to $34k** with spend
+up 23%. Nearly the opposite conclusion, from the same report.
+
+So profit and expense conclusions come **only from closed periods**, compared
+against the previous closed period, and every signal names the month it is about
+so "now" is never assumed. The open month appears as revenue only, labelled with
+the date its books close.
+
+One consequence worth stating: uncategorized transactions are the **normal**
+state of an open month. Flagging them there would raise a false alarm every
+single month, so they are only flagged once the month has closed.
+
+Order-level Shopify data is unaffected by any of this — an order is an order the
+moment it is placed — which is a further reason the two bases stay separate.
+
+`tests/finance-signals.test.ts` defends all of it, including the boundary on the
+closing day itself and across a year end.
 
 ### Signals move the queue
 

@@ -1869,5 +1869,29 @@ export const CONFIG: SystemConfig = {
       "auto_merge": 0.8,
       "send_anything": 0.95
     }
+  },
+  "financeRules": {
+    "books": {
+      "close_day_of_month": 10,
+      "open_month": {
+        "revenue_usable": true,
+        "expenses_usable": false,
+        "profit_usable": false,
+        "flag_uncategorized": false
+      },
+      "closed_month": {
+        "revenue_usable": true,
+        "expenses_usable": true,
+        "profit_usable": true,
+        "flag_uncategorized": true
+      }
+    },
+    "live_commerce": {
+      "independent_of_books_close": true
+    },
+    "thresholds": {
+      "min_comparison_base": 1000,
+      "uncategorized_floor": 1000
+    }
   }
 } as SystemConfig;

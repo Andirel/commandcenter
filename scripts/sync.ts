@@ -29,7 +29,7 @@ import { SessionClient, defaultClient } from '../src/ai/client.js';
 import type { StageContext, InterpretationRecord } from '../src/ai/stages.js';
 import { runSync } from '../src/sync/run.js';
 import { StateCommitment, StateMeeting, StateSignal, StateFinance } from '../src/sync/state.js';
-import { readPnl, financeSignals, type PnlNode } from '../src/signals/finance.js';
+import { readPnl, financeSignals, latestClosedIndex, type PnlNode } from '../src/signals/finance.js';
 import { parseSalesRows, salesTrend, commerceSignals } from '../src/signals/commerce.js';
 
 const args = process.argv.slice(2);
@@ -67,29 +67,42 @@ let signals: StateSignal[] = [];
 let finance: StateFinance = null;
 
 if (Array.isArray(pull.finaloopPnl)) {
-  const snap = readPnl(pull.finaloopPnl as PnlNode[], now);
-  const i = snap.periods.length - 1;
-  if (i >= 0) {
-    const period = snap.periods[i]!;
-    const daysInMonth = new Date(Date.UTC(
-      Number(period.label.split('-')[0]), Number(period.label.split('-')[1]), 0)).getUTCDate();
-    finance = StateFinance.parse({
-      period: period.label,
-      periodComplete: period.complete,
-      daysElapsed: period.days,
-      netSales: snap.netSales[i] ?? 0,
-      netProfit: snap.netProfit[i] ?? 0,
-      paidAds: snap.paidAds[i] ?? 0,
-      priorNetProfit: i > 0 ? snap.netProfit[i - 1] ?? null : null,
-      priorNetSales: i > 0 ? snap.netSales[i - 1] ?? null : null,
-      priorDailyNetSales: i > 0 ? snap.dailyNetSales[i - 1] ?? null : null,
-      dailyNetSales: snap.dailyNetSales[i] ?? null,
-      projectedNetProfit: period.complete ? null : (snap.dailyNetProfit[i] ?? 0) * daysInMonth,
-      dailySales: [],
-      salesChangeRatio: null,
-    });
-    signals = financeSignals(snap).map((s) => StateSignal.parse(s));
-  }
+  const closeDay = config.financeRules.books.close_day_of_month;
+  const snap = readPnl(pull.finaloopPnl as PnlNode[], now, closeDay);
+  const ci = latestClosedIndex(snap.periods);
+  const oi = snap.periods.length - 1;
+
+  const closed = ci >= 0 ? {
+    period: snap.periods[ci]!.label,
+    netSales: snap.netSales[ci] ?? 0,
+    netProfit: snap.netProfit[ci] ?? 0,
+    paidAds: snap.paidAds[ci] ?? 0,
+    priorPeriod: ci > 0 ? snap.periods[ci - 1]!.label : null,
+    priorNetProfit: ci > 0 ? snap.netProfit[ci - 1] ?? null : null,
+    dailyNetSales: snap.dailyNetSales[ci] ?? null,
+    priorDailyNetSales: ci > 0 ? snap.dailyNetSales[ci - 1] ?? null : null,
+  } : null;
+
+  // The open month contributes REVENUE only; its expenses are incomplete.
+  const openPeriod = oi >= 0 && !snap.periods[oi]!.closed ? snap.periods[oi]! : null;
+  const open = openPeriod ? {
+    period: openPeriod.label,
+    daysElapsed: openPeriod.days,
+    netSales: snap.netSales[oi] ?? 0,
+    closesOn: closesOn(openPeriod.label, closeDay),
+  } : null;
+
+  finance = StateFinance.parse({ closed, open, dailySales: [], salesChangeRatio: null });
+  signals = financeSignals(snap, {
+    closeDay,
+    uncategorizedFloor: config.financeRules.thresholds.uncategorized_floor,
+  }).map((s) => StateSignal.parse(s));
+}
+
+/** Date on which the given month's books close, ISO date. */
+function closesOn(label: string, closeDay: number): string {
+  const [y, m] = label.split('-').map(Number);
+  return new Date(Date.UTC(y!, m!, closeDay)).toISOString().slice(0, 10);
 }
 
 if (pull.shopifySales?.rows?.length) {
@@ -132,9 +145,12 @@ console.log(`  duplicates       ${c.duplicatesMerged}`);
 console.log(`  needs review     ${c.needsReview}`);
 console.log(`  commitments      ${state.commitments.length}`);
 console.log(`  signals          ${state.signals.length}`);
-if (state.finance) {
-  const f = state.finance;
-  console.log(`  finance          ${f.period}${f.periodComplete ? '' : ` (${f.daysElapsed}d in)`} — net ${Math.round(f.netProfit)}`);
+if (state.finance?.closed) {
+  const c = state.finance.closed;
+  console.log(`  books closed     ${c.period} — net ${Math.round(c.netProfit)}`);
+}
+if (state.finance?.open) {
+  console.log(`  open month       ${state.finance.open.period} (${state.finance.open.daysElapsed}d in, closes ${state.finance.open.closesOn}) — revenue only`);
 }
 if (interpretations.length) {
   const bad = interpretations.filter((r) => !r.validationOk).length;

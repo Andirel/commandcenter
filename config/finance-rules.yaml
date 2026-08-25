@@ -1,0 +1,47 @@
+# finance-rules.yaml
+#
+# When financial figures may be treated as real.
+#
+# 120/Life closes its books monthly, by the 10th of the following month. Until a
+# month is closed its EXPENSE side is incomplete — bills not yet entered,
+# transactions not yet categorized — so any profit figure derived from it is
+# provisional and usually flatters or overstates the result arbitrarily.
+#
+# This is not a display preference. Reporting an open month's loss as fact
+# produces confident, wrong headlines: on 2026-08-25 the open month showed a
+# $53k loss and ad spend "up 61%", while the closed months showed profit
+# IMPROVING to $34k and spend up 23%. Nearly the opposite conclusion.
+
+books:
+  # Books for month M are closed by this day of month M+1.
+  close_day_of_month: 10
+
+  # What may be concluded from a month that has not closed yet.
+  open_month:
+    # Revenue arrives through automated integrations and is broadly current.
+    revenue_usable: true
+    # Expenses lag, so anything derived from them is not.
+    expenses_usable: false
+    profit_usable: false
+    # Uncategorized transactions are the NORMAL pre-close state. Flagging them
+    # in an open month would raise a false alarm every single month.
+    flag_uncategorized: false
+
+  closed_month:
+    revenue_usable: true
+    expenses_usable: true
+    profit_usable: true
+    flag_uncategorized: true
+
+# Live order-level data (Shopify) is unaffected by the accounting close: an
+# order is an order the moment it is placed. Sales trend therefore stays current
+# while profitability waits for the close — which is exactly why the two are
+# kept on separate bases and never blended.
+live_commerce:
+  independent_of_books_close: true
+
+thresholds:
+  # Below this, a percentage swing off a small base is noise.
+  min_comparison_base: 1000
+  # Uncategorized spend worth flagging in a CLOSED month.
+  uncategorized_floor: 1000

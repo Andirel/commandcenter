@@ -460,27 +460,35 @@
     if (typeof tree === 'string') { try { tree = JSON.parse(tree); } catch (e) { tree = null; } }
     if (!Array.isArray(tree)) { setConn(FINALOOP, 'warn', 'Finaloop · unreadable'); return; }
 
-    var snap = E.readPnl(tree, now);
-    var i = snap.periods.length - 1;
-    if (i < 0) { setConn(FINALOOP, 'warn', 'Finaloop · empty'); return; }
-    var period = snap.periods[i];
+    // Books close on the 10th of the following month; until then a month's
+    // expense side is incomplete and no profit may be read from it.
+    var CLOSE_DAY = 10;
+    var snap = E.readPnl(tree, now, CLOSE_DAY);
+    var ci = E.latestClosedIndex(snap.periods);
+    var oi = snap.periods.length - 1;
+    if (ci < 0 && oi < 0) { setConn(FINALOOP, 'warn', 'Finaloop · empty'); return; }
 
-    VIEW.finance = {
-      period: period.label,
-      periodComplete: period.complete,
-      daysElapsed: period.days,
-      netSales: snap.netSales[i] || 0,
-      netProfit: snap.netProfit[i] || 0,
-      paidAds: snap.paidAds[i] || 0,
-      priorNetProfit: i > 0 ? snap.netProfit[i - 1] : null,
-      priorNetSales: i > 0 ? snap.netSales[i - 1] : null,
-      priorDailyNetSales: i > 0 ? snap.dailyNetSales[i - 1] : null,
-      dailyNetSales: snap.dailyNetSales[i],
-      projectedNetProfit: period.complete ? null : snap.dailyNetProfit[i] * daysInMonth(period.label),
-      dailySales: [],
-      salesChangeRatio: null
-    };
-    VIEW.signals = E.financeSignals(snap);
+    var closed = ci >= 0 ? {
+      period: snap.periods[ci].label,
+      netSales: snap.netSales[ci] || 0,
+      netProfit: snap.netProfit[ci] || 0,
+      paidAds: snap.paidAds[ci] || 0,
+      priorPeriod: ci > 0 ? snap.periods[ci - 1].label : null,
+      priorNetProfit: ci > 0 ? snap.netProfit[ci - 1] : null,
+      dailyNetSales: snap.dailyNetSales[ci],
+      priorDailyNetSales: ci > 0 ? snap.dailyNetSales[ci - 1] : null
+    } : null;
+
+    var openP = (oi >= 0 && !snap.periods[oi].closed) ? snap.periods[oi] : null;
+    var open = openP ? {
+      period: openP.label,
+      daysElapsed: openP.days,
+      netSales: snap.netSales[oi] || 0,       // revenue only — no profit field
+      closesOn: closesOnDate(openP.label, CLOSE_DAY)
+    } : null;
+
+    VIEW.finance = { closed: closed, open: open, dailySales: [], salesChangeRatio: null };
+    VIEW.signals = E.financeSignals(snap, { closeDay: CLOSE_DAY });
     setConn(FINALOOP, 'live', 'Finaloop');
 
     // Sparkline is a bonus, never a dependency.
@@ -504,6 +512,11 @@
   }
 
   function iso(d) { return d.toISOString().slice(0, 10); }
+
+  function closesOnDate(label, closeDay) {
+    var p = label.split('-');
+    return new Date(Date.UTC(Number(p[0]), Number(p[1]), closeDay)).toISOString().slice(0, 10);
+  }
   function daysInMonth(label) {
     var p = label.split('-');
     return new Date(Date.UTC(Number(p[0]), Number(p[1]), 0)).getUTCDate();
@@ -965,34 +978,45 @@
     section.style.display = '';
 
     var note = section.querySelector('.note');
-    if (f) {
-      note.textContent = f.periodComplete
-        ? f.period
-        : f.period + ' · ' + f.daysElapsed + ' days in';
-    }
-
     var card = el('div', 'card');
 
-    if (f) {
+    if (f && f.closed) {
+      var c = f.closed;
+      note.textContent = c.period + ' closed';
+
       var stats = el('div', 'stats');
-      stats.appendChild(stat('Net profit', E.money(f.netProfit),
-        f.periodComplete ? null : 'run-rate ' + E.money(f.projectedNetProfit || 0),
-        f.netProfit < 0 ? 'neg' : 'pos'));
-      // Compared per DAY, because the running period is short of a full month
-      // and a raw month-over-month figure would invent a collapse.
-      stats.appendChild(stat('Net sales', E.money(f.netSales),
-        f.priorDailyNetSales && f.dailyNetSales
-          ? perDayDelta(f.dailyNetSales, f.priorDailyNetSales) + ' per day vs ' + priorLabel(f.period)
+      stats.appendChild(stat('Net profit', E.money(c.netProfit),
+        c.priorNetProfit !== null ? c.priorPeriod + ' ' + E.money(c.priorNetProfit) : null,
+        c.netProfit < 0 ? 'neg' : 'pos'));
+      stats.appendChild(stat('Net sales', E.money(c.netSales),
+        c.priorDailyNetSales && c.dailyNetSales
+          ? perDayDelta(c.dailyNetSales, c.priorDailyNetSales) + ' per day vs ' + c.priorPeriod
           : null));
-      stats.appendChild(stat('Paid ads', E.money(f.paidAds), 'same period'));
-      stats.appendChild(stat('Daily sales', f.dailySales.length
-        ? E.money(avgOf(f.dailySales)) : '—',
+      stats.appendChild(stat('Paid ads', E.money(c.paidAds), c.period));
+      stats.appendChild(stat('Daily sales', f.dailySales.length ? E.money(avgOf(f.dailySales)) : '—',
         f.salesChangeRatio !== null
           ? (f.salesChangeRatio >= 0 ? '+' : '−') + E.pct(f.salesChangeRatio) + ' vs prior week'
-          : 'last 7 complete days'));
+          : 'live, last 7 days'));
       card.appendChild(stats);
+    } else if (f) {
+      note.textContent = 'awaiting close';
+    }
 
-      if (f.dailySales.length >= 4) card.appendChild(sparkline(f.dailySales));
+    if (f && f.dailySales.length >= 4) card.appendChild(sparkline(f.dailySales));
+
+    /*
+     * The open month, stated for what it is.
+     *
+     * Revenue arrives through automated integrations and is broadly current;
+     * expenses lag until the close, so no profit is shown. Saying this plainly
+     * is what stops the reader assuming the closed figures describe today.
+     */
+    if (f && f.open) {
+      var o = el('div', 'openmo');
+      o.appendChild(el('span', 'k', o_label(f.open)));
+      o.appendChild(el('span', 'v', E.money(f.open.netSales) + ' revenue'));
+      o.appendChild(el('span', 'n', 'expenses not final until ' + f.open.closesOn));
+      card.appendChild(o);
     }
 
     signals.slice(0, 4).forEach(function (sg) {
@@ -1012,6 +1036,10 @@
 
     body.appendChild(card);
     countOf('b-business').textContent = signals.length ? String(signals.length) : '';
+  }
+
+  function o_label(open) {
+    return open.period + ' · ' + open.daysElapsed + ' days in';
   }
 
   function stat(label, value, sub, sign) {

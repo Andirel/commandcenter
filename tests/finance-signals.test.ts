@@ -7,7 +7,10 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { readPnl, financeSignals, findNode, periodDays, money, pct, type PnlNode } from '../src/signals/finance.js';
+import {
+  readPnl, financeSignals, findNode, periodDays, isPeriodClosed, latestClosedIndex,
+  money, pct, type PnlNode,
+} from '../src/signals/finance.js';
 
 const PNL = JSON.parse(
   readFileSync(new URL('./fixtures/finaloop-pnl.json', import.meta.url), 'utf8'),
@@ -39,65 +42,107 @@ describe('reading the report tree', () => {
 
 describe('the partial-month rule', () => {
   it('counts a completed month in full', () => {
-    expect(periodDays('2026-07', AS_OF)).toEqual({ label: '2026-07', days: 31, complete: true });
-    expect(periodDays('2026-06', AS_OF)).toEqual({ label: '2026-06', days: 30, complete: true });
+    expect(periodDays('2026-07', AS_OF).days).toBe(31);
+    expect(periodDays('2026-06', AS_OF).days).toBe(30);
   });
 
   it('counts only elapsed days of the running month, and marks it incomplete', () => {
-    expect(periodDays('2026-08', AS_OF)).toEqual({ label: '2026-08', days: 24, complete: false });
+    const p = periodDays('2026-08', AS_OF);
+    expect(p.days).toBe(24);
+    expect(p.complete).toBe(false);
   });
 
   it('does not report a sales collapse that is only missing days', () => {
     const s = readPnl(PNL, AS_OF);
     // Raw: 276,514 vs 356,984 looks like a 23% fall.
-    const raw = (s.netSales[2]! - s.netSales[1]!) / s.netSales[1]!;
-    expect(raw).toBeLessThan(-0.2);
-
+    expect((s.netSales[2]! - s.netSales[1]!) / s.netSales[1]!).toBeLessThan(-0.2);
     // Per day it is roughly flat, which is the truth.
-    const perDay = (s.dailyNetSales[2]! - s.dailyNetSales[1]!) / s.dailyNetSales[1]!;
-    expect(Math.abs(perDay)).toBeLessThan(0.06);
+    expect(Math.abs((s.dailyNetSales[2]! - s.dailyNetSales[1]!) / s.dailyNetSales[1]!)).toBeLessThan(0.06);
+  });
+});
 
-    // And no signal claims a sales problem.
-    const signals = financeSignals(s);
-    expect(signals.some((x) => /sales.*(down|collapse|fall)/i.test(x.summary))).toBe(false);
+describe('the unclosed-books rule', () => {
+  // Books for month M close on the 10th of month M+1. Until then M's expense
+  // side is incomplete, so no profit conclusion may be drawn from it.
+
+  it('treats a month as closed from the closing day onward', () => {
+    expect(isPeriodClosed('2026-07', new Date('2026-08-09T23:59:59Z'), 10)).toBe(false);
+    expect(isPeriodClosed('2026-07', new Date('2026-08-10T00:00:00Z'), 10)).toBe(true);
+    expect(isPeriodClosed('2026-07', AS_OF, 10)).toBe(true);
   });
 
-  it('labels anything projected from an incomplete period as a run-rate', () => {
+  it('never treats the running month as closed', () => {
+    expect(isPeriodClosed('2026-08', AS_OF, 10)).toBe(false);
+    expect(periodDays('2026-08', AS_OF).closed).toBe(false);
+  });
+
+  it('handles the year boundary', () => {
+    expect(isPeriodClosed('2026-12', new Date('2027-01-09T00:00:00Z'), 10)).toBe(false);
+    expect(isPeriodClosed('2026-12', new Date('2027-01-10T00:00:00Z'), 10)).toBe(true);
+  });
+
+  it('picks the latest closed month as the basis', () => {
+    const s = readPnl(PNL, AS_OF);
+    expect(latestClosedIndex(s.periods)).toBe(1);          // 2026-07
+    expect(s.periods[1]!.label).toBe('2026-07');
+  });
+
+  it('falls back a further month before the close date', () => {
+    // On 2026-08-05 July has NOT closed yet, so June is the newest usable month.
+    const s = readPnl(PNL, new Date('2026-08-05T09:00:00Z'));
+    expect(s.periods[latestClosedIndex(s.periods)]!.label).toBe('2026-06');
+  });
+
+  it('draws NO conclusion from the open month', () => {
+    // The open month reads as a $53k loss. The closed month made $34k. Reporting
+    // the former as fact is the failure this rule exists to prevent.
     const signals = financeSignals(readPnl(PNL, AS_OF));
-    const margin = signals.find((s) => s.signalType === 'margin_issue')!;
-    expect(margin.evidence).toContain('run-rate');
-    expect(margin.metadata.complete).toBe(false);
+    expect(signals.some((x) => x.summary.includes('2026-08'))).toBe(false);
+    expect(signals.every((x) => x.metadata.closed === true)).toBe(true);
+  });
+
+  it('does not flag uncategorized spend in an open month', () => {
+    // $10k uncategorized in August is the NORMAL pre-close state. Flagging it
+    // would raise a false alarm every single month.
+    const signals = financeSignals(readPnl(PNL, AS_OF));
+    expect(signals.some((x) => x.signalType === 'expense_anomaly')).toBe(false);
+  });
+
+  it('does flag uncategorized spend once the month has closed', () => {
+    const clone = JSON.parse(JSON.stringify(PNL)) as PnlNode[];
+    findNode(clone, 'Uncategorized transactions - money spent')!.amounts = [0, 12000, 0];
+    const signals = financeSignals(readPnl(clone, AS_OF));
+    const anomaly = signals.find((x) => x.signalType === 'expense_anomaly')!;
+    expect(anomaly).toBeDefined();
+    expect(anomaly.summary).toContain('2026-07');
+    expect(anomaly.likelyPeople).toEqual(['Brian']);
   });
 });
 
 describe('the signals it produces from the real numbers', () => {
   const signals = financeSignals(readPnl(PNL, AS_OF));
 
-  it('flags the swing from profit to loss', () => {
-    const s = signals.find((x) => x.signalType === 'margin_issue')!;
-    expect(s).toBeDefined();
-    expect(s.severity).toBeGreaterThanOrEqual(7);
-    expect(s.summary).toContain('swung to a loss');
-    expect(s.likelyPeople).toContain('Adi');
+  it('reports profit IMPROVING, because that is what the closed months show', () => {
+    // June -$11k → July +$34k. The open month's apparent loss is not a signal.
+    expect(signals.some((x) => x.signalType === 'margin_issue')).toBe(false);
   });
 
-  it('flags ad spend rising faster than sales, compared per day', () => {
+  it('flags ad spend rising faster than sales between closed months', () => {
     const s = signals.find((x) => x.signalType === 'roas_decline')!;
     expect(s).toBeDefined();
-    expect(s.evidence).toContain('per day');
-    // Daily ads 2128 → 3437 is about +62%.
-    expect(s.summary).toMatch(/up 6\d%/);
+    // Daily ads 1731 → 2128 is +23%, not the +61% the open month suggested.
+    expect(s.summary).toMatch(/rose 2\d% per day/);
+    expect(s.summary).toContain('2026-06');
+    expect(s.summary).toContain('2026-07');
+    expect(s.evidence).toContain('Closed months only');
   });
 
-  it('routes uncategorized spend to bookkeeping, never to accounts payable', () => {
-    const s = signals.find((x) => x.signalType === 'expense_anomaly')!;
-    expect(s).toBeDefined();
-    expect(s.likelyPeople).toEqual(['Brian']);
-    expect(s.likelyPeople).not.toContain('Peter');
+  it('names the months it is talking about, so "now" is never assumed', () => {
+    for (const s of signals) expect(s.summary).toMatch(/20\d\d-\d\d/);
   });
 
-  it('produces only material signals, not one per line item', () => {
-    expect(signals.length).toBeLessThanOrEqual(4);
+  it('produces only material signals', () => {
+    expect(signals.length).toBeLessThanOrEqual(3);
   });
 });
 
@@ -108,10 +153,17 @@ describe('restraint', () => {
     return clone;
   }
 
-  it('says nothing when the business is profitable and steady', () => {
-    const tree = withProfit([30000, 32000, 26000]);
-    const signals = financeSignals(readPnl(tree, AS_OF));
+  it('says nothing when the closed months were profitable', () => {
+    const signals = financeSignals(readPnl(withProfit([30000, 32000, -99999]), AS_OF));
     expect(signals.some((s) => s.signalType === 'margin_issue')).toBe(false);
+  });
+
+  it('does flag a loss once the month it happened in has closed', () => {
+    // July closed negative after a positive June.
+    const signals = financeSignals(readPnl(withProfit([30000, -20000, 5000]), AS_OF));
+    const margin = signals.find((s) => s.signalType === 'margin_issue')!;
+    expect(margin).toBeDefined();
+    expect(margin.summary).toContain('2026-07 closed at a loss');
   });
 
   it('ignores a percentage swing off a trivial base', () => {

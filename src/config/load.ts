@@ -12,8 +12,8 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import {
   AiRoutingConfig, ApprovalRulesConfig, BusinessAreasConfig, CapabilitiesConfig,
-  FollowupRulesConfig, OrganizationsConfig, PeopleConfig, PriorityRulesConfig,
-  RoutingRulesConfig, SystemConfig,
+  FinanceRulesConfig, FollowupRulesConfig, OrganizationsConfig, PeopleConfig,
+  PriorityRulesConfig, RoutingRulesConfig, SystemConfig,
 } from '../schemas/config.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -157,6 +157,7 @@ export function loadConfig(dir: string = CONFIG_DIR, opts: { force?: boolean } =
     approvalRules: loadYaml(dir, 'approval-rules.yaml', ApprovalRulesConfig),
     followupRules: loadYaml(dir, 'followup-rules.yaml', FollowupRulesConfig),
     aiRouting: loadYaml(dir, 'ai-routing.yaml', AiRoutingConfig),
+    financeRules: loadYaml(dir, 'finance-rules.yaml', FinanceRulesConfig),
   };
 
   const errors = checkReferentialIntegrity(cfg);

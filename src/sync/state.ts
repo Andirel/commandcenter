@@ -106,20 +106,35 @@ export const StateSignal = z.object({
 });
 export type StateSignal = z.infer<typeof StateSignal>;
 
-/** Headline figures the Business panel renders. */
+/**
+ * Headline figures the Business panel renders.
+ *
+ * Split deliberately by what is TRUE rather than by what is recent. `closed` is
+ * the newest month whose books have closed, so its profit is real. `open` is
+ * the month in progress, whose revenue is broadly current but whose expenses
+ * are not — so it carries no profit figure at all.
+ */
 export const StateFinance = z.object({
-  period: z.string(),
-  periodComplete: z.boolean(),
-  daysElapsed: z.number().int(),
-  netSales: z.number(),
-  netProfit: z.number(),
-  paidAds: z.number(),
-  priorNetProfit: z.number().nullable().default(null),
-  priorNetSales: z.number().nullable().default(null),
-  priorDailyNetSales: z.number().nullable().default(null),
-  dailyNetSales: z.number().nullable().default(null),
-  /** Projected from the daily rate; only meaningful while the period is open. */
-  projectedNetProfit: z.number().nullable().default(null),
+  closed: z.object({
+    period: z.string(),
+    netSales: z.number(),
+    netProfit: z.number(),
+    paidAds: z.number(),
+    priorPeriod: z.string().nullable().default(null),
+    priorNetProfit: z.number().nullable().default(null),
+    dailyNetSales: z.number().nullable().default(null),
+    priorDailyNetSales: z.number().nullable().default(null),
+  }).nullable().default(null),
+
+  open: z.object({
+    period: z.string(),
+    daysElapsed: z.number().int(),
+    /** Revenue only. There is deliberately no profit field here. */
+    netSales: z.number(),
+    closesOn: z.string(),
+  }).nullable().default(null),
+
+  /** Order-level, unaffected by the accounting close. */
   dailySales: z.array(z.object({ day: z.string(), value: z.number() })).default([]),
   salesChangeRatio: z.number().nullable().default(null),
 }).nullable();

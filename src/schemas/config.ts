@@ -312,6 +312,28 @@ export const AiRoutingConfig = z.object({
 });
 export type AiRoutingConfig = z.infer<typeof AiRoutingConfig>;
 
+const BooksUsability = z.object({
+  revenue_usable: z.boolean(),
+  expenses_usable: z.boolean(),
+  profit_usable: z.boolean(),
+  flag_uncategorized: z.boolean(),
+});
+
+export const FinanceRulesConfig = z.object({
+  books: z.object({
+    /** Books for month M close by this day of month M+1. */
+    close_day_of_month: z.number().int().min(1).max(28),
+    open_month: BooksUsability,
+    closed_month: BooksUsability,
+  }),
+  live_commerce: z.object({ independent_of_books_close: z.boolean() }),
+  thresholds: z.object({
+    min_comparison_base: z.number(),
+    uncategorized_floor: z.number(),
+  }),
+});
+export type FinanceRulesConfig = z.infer<typeof FinanceRulesConfig>;
+
 /** The fully-loaded, validated configuration set. */
 export const SystemConfig = z.object({
   capabilities: CapabilitiesConfig,
@@ -323,6 +345,7 @@ export const SystemConfig = z.object({
   approvalRules: ApprovalRulesConfig,
   followupRules: FollowupRulesConfig,
   aiRouting: AiRoutingConfig,
+  financeRules: FinanceRulesConfig,
 });
 export type SystemConfig = z.infer<typeof SystemConfig>;
 
