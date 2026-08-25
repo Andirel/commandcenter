@@ -24,6 +24,7 @@ export const OrganizationType = z.enum([
 export type OrganizationType = z.infer<typeof OrganizationType>;
 
 export const RelationshipStatus = z.enum(['active', 'prospective', 'dormant', 'ended']);
+export type RelationshipStatus = z.infer<typeof RelationshipStatus>;
 
 /**
  * Discovery lifecycle. Authority is earned, never granted by a single email.
@@ -34,12 +35,14 @@ export const DiscoveryStatus = z.enum(['discovered', 'provisional', 'confirmed',
 export type DiscoveryStatus = z.infer<typeof DiscoveryStatus>;
 
 export const InternalExternal = z.enum(['internal', 'external', 'unknown']);
+export type InternalExternal = z.infer<typeof InternalExternal>;
 
 export const RelationshipType = z.enum([
   'employee', 'contractor', 'agency_contact', 'vendor_contact',
   'retailer_contact', 'manufacturer_contact', 'media_contact',
   'professional_services_contact', 'customer', 'other', 'unknown',
 ]);
+export type RelationshipType = z.infer<typeof RelationshipType>;
 
 export const PrimarySecondary = z.enum(['primary', 'secondary', 'occasional']);
 export type PrimarySecondary = z.infer<typeof PrimarySecondary>;
@@ -47,6 +50,7 @@ export type PrimarySecondary = z.infer<typeof PrimarySecondary>;
 export const InitiativeStatus = z.enum([
   'proposed', 'active', 'paused', 'blocked', 'completed', 'abandoned',
 ]);
+export type InitiativeStatus = z.infer<typeof InitiativeStatus>;
 
 export const TaskStatus = z.enum([
   'proposed', 'open', 'in_progress', 'waiting_internal', 'waiting_external',
@@ -57,6 +61,7 @@ export type TaskStatus = z.infer<typeof TaskStatus>;
 export const TaskCollaboratorRole = z.enum([
   'contributor', 'reviewer', 'approver', 'watcher', 'external_counterparty', 'informed',
 ]);
+export type TaskCollaboratorRole = z.infer<typeof TaskCollaboratorRole>;
 
 /**
  * How the CEO must engage. Central to the product: what Adi must DO costs
@@ -70,6 +75,7 @@ export type ActionMode = z.infer<typeof ActionMode>;
 export const CommitmentStatus = z.enum([
   'open', 'fulfilled', 'overdue', 'waived', 'cancelled', 'needs_review',
 ]);
+export type CommitmentStatus = z.infer<typeof CommitmentStatus>;
 
 export const CommitmentDirection = z.enum(['we_owe', 'they_owe', 'internal']);
 export type CommitmentDirection = z.infer<typeof CommitmentDirection>;
@@ -84,6 +90,7 @@ export type SourceSystem = z.infer<typeof SourceSystem>;
 export const ProcessingStatus = z.enum([
   'pending', 'processing', 'processed', 'ignored', 'failed', 'needs_review',
 ]);
+export type ProcessingStatus = z.infer<typeof ProcessingStatus>;
 
 /**
  * Deduplication outcome. A wrong MERGE destroys information; a duplicate is
@@ -117,5 +124,7 @@ export const CorrectionType = z.enum([
 export type CorrectionType = z.infer<typeof CorrectionType>;
 
 export const AttendanceType = z.enum(['host', 'attendee', 'invited_absent', 'unknown']);
+export type AttendanceType = z.infer<typeof AttendanceType>;
 
 export const WorkflowRunStatus = z.enum(['running', 'succeeded', 'failed', 'partial']);
+export type WorkflowRunStatus = z.infer<typeof WorkflowRunStatus>;

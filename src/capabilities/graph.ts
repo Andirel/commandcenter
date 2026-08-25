@@ -42,6 +42,7 @@ export class TeamModel {
   private readonly peopleBySlug = new Map<string, Person>();
   private readonly peopleByEmail = new Map<string, Person>();
   private readonly peopleBySlackId = new Map<string, Person>();
+  private readonly peopleByAlias = new Map<string, Person>();
   private readonly orgsById = new Map<string, Organization>();
   private readonly orgsBySlug = new Map<string, Organization>();
   private readonly orgsByDomain = new Map<string, Organization>();
@@ -62,6 +63,12 @@ export class TeamModel {
       if (person.email) this.peopleByEmail.set(person.email.toLowerCase(), person);
       for (const alt of person.alternateEmails) this.peopleByEmail.set(alt.toLowerCase(), person);
       if (person.slackUserId) this.peopleBySlackId.set(person.slackUserId, person);
+      // Index the canonical name and every alias under a normalized key, so a
+      // Zoom display name ("Michaelhammersley") resolves to the right person.
+      for (const label of [person.name, ...person.aliases]) {
+        const key = normalizeLabel(label);
+        if (key) this.peopleByAlias.set(key, person);
+      }
     }
   }
 
@@ -71,6 +78,10 @@ export class TeamModel {
   getPersonBySlug(slug: string): Person | undefined { return this.peopleBySlug.get(slug); }
   getPersonByEmail(email: string): Person | undefined { return this.peopleByEmail.get(email.toLowerCase()); }
   getPersonBySlackId(id: string): Person | undefined { return this.peopleBySlackId.get(id); }
+  /** Resolve a display name via canonical name or curated alias. */
+  getPersonByAlias(label: string): Person | undefined {
+    return this.peopleByAlias.get(normalizeLabel(label));
+  }
   getOrganization(id: string): Organization | undefined { return this.orgsById.get(id); }
   getOrganizationBySlug(slug: string): Organization | undefined { return this.orgsBySlug.get(slug); }
   getOrganizationByDomain(domain: string): Organization | undefined {
@@ -150,6 +161,22 @@ export class TeamModel {
   }
 }
 
+/**
+ * Normalize a display name for alias lookup.
+ *
+ * Strips accents, punctuation and the disambiguation suffixes Zoom appends to
+ * duplicate participants ("Brian Ouellette (2)"), then collapses whitespace.
+ */
+function normalizeLabel(label: string): string {
+  return label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*\(\d+\)\s*$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
 function toMatch(edge: CapabilityEdge): CapabilityMatch {
   return {
     capability: edge.capability,
@@ -201,6 +228,7 @@ export function teamModelFromConfig(cfg: SystemConfig): TeamModel {
     name: p.name,
     email: p.email ?? null,
     alternateEmails: [],
+    aliases: p.aliases,
     slackUserId: p.slack_user_id ?? null,
     zoomIdentity: null,
     title: p.role ?? null,

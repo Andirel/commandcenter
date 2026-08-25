@@ -24,6 +24,8 @@ export const Person = z.object({
   name: z.string(),
   email: z.string().nullable().default(null),
   alternateEmails: z.array(z.string()).default([]),
+  /** Display names this person appears under in Zoom / Slack / mail. */
+  aliases: z.array(z.string()).default([]),
   slackUserId: z.string().nullable().default(null),
   zoomIdentity: z.string().nullable().default(null),
   title: z.string().nullable().default(null),

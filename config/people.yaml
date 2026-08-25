@@ -11,6 +11,9 @@
 #   capabilities.<name>.proficiency  0-1, how good they are at it
 #   capabilities.<name>.level        primary | secondary | occasional
 #   confirmed: true                  human-asserted; evidence never silently overwrites
+#   aliases                          display names this person appears under in Zoom,
+#                                    Slack or mail. Required for meeting attribution:
+#                                    Zoom reports "Michaelhammersley", not "Mike".
 #
 # Emails and Slack IDs are intentionally left blank. They are populated from
 # the directory during setup (scripts/sync-directory.ts) rather than guessed.
@@ -20,6 +23,9 @@ people:
   adi:
     name: "Adi"
     role: "CEO"
+    # Display names seen in Zoom attendee lists and AI Companion attribution.
+    aliases:
+      - "Adi Malik"
     internal: true
     discovery_status: confirmed
     importance: 5
@@ -55,6 +61,7 @@ people:
   paul:
     name: "Paul"
     role: "Executive Assistant / Project Manager"
+    aliases: []
     internal: true
     discovery_status: confirmed
     importance: 5
@@ -80,6 +87,12 @@ people:
   mike:
     name: "Mike"
     role: "COO / CTO"
+    # Display names seen in Zoom attendee lists and AI Companion attribution.
+    aliases:
+      - "Michaelhammersley"
+      - "michaelhammersley"
+      - "Michael Hammersley"
+      - "Mike Hammersley"
     internal: true
     discovery_status: confirmed
     importance: 5
@@ -106,6 +119,9 @@ people:
   ira:
     name: "Ira"
     role: "Customer Service"
+    # Display names seen in Zoom attendee lists and AI Companion attribution.
+    aliases:
+      - "Ira Antelis"
     internal: true
     discovery_status: confirmed
     importance: 3
@@ -120,6 +136,7 @@ people:
   peter:
     name: "Peter"
     role: "Accounts Payable"
+    aliases: []
     internal: true
     discovery_status: confirmed
     importance: 3
@@ -134,6 +151,9 @@ people:
   brian:
     name: "Brian"
     role: "Bookkeeping / Financials"
+    # Display names seen in Zoom attendee lists and AI Companion attribution.
+    aliases:
+      - "Brian Ouellette"
     internal: true
     discovery_status: confirmed
     importance: 3
@@ -149,6 +169,7 @@ people:
   buster:
     name: "Buster"
     role: "Organic Social"
+    aliases: []
     internal: false
     relationship_type: contractor
     discovery_status: confirmed
@@ -161,6 +182,9 @@ people:
   chase:
     name: "Chase"
     role: "Organic Social"
+    # Display names seen in Zoom attendee lists and AI Companion attribution.
+    aliases:
+      - "Chase Dinning"
     internal: false
     relationship_type: contractor
     discovery_status: confirmed
@@ -173,6 +197,7 @@ people:
   julienne:
     name: "Julienne"
     role: "Designer"
+    aliases: []
     internal: false
     relationship_type: contractor
     discovery_status: confirmed
@@ -187,6 +212,9 @@ people:
   susan:
     name: "Susan"
     role: "Podcast / Interview Support"
+    # Display names seen in Zoom attendee lists and AI Companion attribution.
+    aliases:
+      - "Susan Schachter"
     internal: false
     relationship_type: contractor
     discovery_status: confirmed

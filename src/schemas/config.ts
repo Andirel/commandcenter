@@ -36,6 +36,8 @@ export const PeopleConfig = z.object({
     broad_generalist: z.boolean().default(false),
     eligible_for_all_areas: z.boolean().default(false),
     leverage_candidate: z.boolean().default(false),
+    /** Display names this person appears under in Zoom / Slack / mail. */
+    aliases: z.array(z.string()).default([]),
     capabilities: z.record(CapabilityRef).default({}),
     collaborates_with: z.array(z.string()).default([]),
     notes: z.array(z.string()).default([]),
