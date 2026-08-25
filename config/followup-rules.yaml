@@ -1,0 +1,87 @@
+# followup-rules.yaml
+#
+# When to chase, who chases, and how insistently.
+#
+# The distinction that matters (docs/team-model.md 9):
+#   relationship owner  -- whose relationship it is
+#   task owner          -- who does the work
+#   follow-up owner     -- who does the chasing
+# These are often three different people. The system must never send a message
+# in someone else's name; it prepares a draft FOR the relationship owner.
+
+defaults:
+  business_days_only: true
+  timezone: "America/New_York"
+
+cadence:
+  # First nudge after this many business days of silence, then escalating.
+  external:
+    first_followup_business_days: 3
+    second_followup_business_days: 7
+    escalate_business_days: 12
+    max_followups: 4
+
+  internal:
+    first_followup_business_days: 2
+    second_followup_business_days: 4
+    escalate_business_days: 7
+    max_followups: 3
+
+# Importance overrides the default cadence.
+by_importance:
+  5: { first_followup_business_days: 1, max_followups: 6 }
+  4: { first_followup_business_days: 2, max_followups: 5 }
+  3: {}
+  2: { first_followup_business_days: 5 }
+  1: { first_followup_business_days: 8, max_followups: 2 }
+
+# ---------------------------------------------------------------------------
+# Who chases
+# ---------------------------------------------------------------------------
+follow_up_ownership:
+  # Prefer the execution tracker on the organization; fall back to the task's
+  # project manager; then the relationship owner.
+  resolution_order:
+    - organization.execution_tracker
+    - task.project_manager
+    - organization.relationship_owner
+    - task.primary_owner
+
+  # The system never sends as another person. For a relationship the CEO owns,
+  # it prepares a draft and tells the tracker it is ready.
+  never_send_on_behalf_of_others: true
+
+  notification_pattern: |
+    {counterparty} owes {item}. {days} business days outstanding.
+    Draft follow-up for {relationship_owner} is ready.
+
+# ---------------------------------------------------------------------------
+# Escalation
+# ---------------------------------------------------------------------------
+escalation:
+  # Surface to the CEO only when it is genuinely material.
+  to_ceo_when:
+    - importance_gte: 4
+    - blocks_other_tasks: true
+    - overdue_business_days_gte: 10
+    - value_at_stake_above: 10000
+
+  # Avoid brief noise: an item already shown and unchanged is not re-surfaced
+  # every single day.
+  suppress_repeat_days: 3
+
+# ---------------------------------------------------------------------------
+# Closing the loop. A follow-up ends when the awaited thing actually arrives.
+# ---------------------------------------------------------------------------
+resolution:
+  auto_resolve_on_reply: true
+  auto_resolve_confidence: 0.80
+  # Consequential commitments require a human to confirm fulfillment even when
+  # the system is confident.
+  require_human_confirmation_when:
+    - value_at_stake_above: 10000
+    - approval_class: RED
+    - importance_gte: 5
+
+  stale_close_business_days: 45
+  stale_close_action: needs_review     # never silently drop a commitment

@@ -1,0 +1,88 @@
+# business-areas.yaml
+#
+# Business areas are for grouping, reporting, and default capability hints.
+# They are NOT departments and must not be used to route by themselves --
+# routing runs on the capability graph. See docs/routing.md.
+
+business_areas:
+  strategy:
+    description: "Company direction, positioning, major business choices"
+    default_capabilities: [strategy]
+    typical_decision_maker: adi
+
+  marketing:
+    description: "Paid media, podcast advertising, organic social, email, content"
+    default_capabilities: [paid_media, podcast_advertising, organic_social, copywriting]
+    typical_decision_maker: adi
+
+  retail:
+    description: "Retailer relationships, onboarding, distribution"
+    default_capabilities: [retail, administration, vendor_coordination]
+    typical_decision_maker: adi
+
+  operations:
+    description: "Supply chain, manufacturing, inventory, logistics, fulfillment"
+    default_capabilities: [operations, supply_chain, manufacturing, inventory, logistics]
+    typical_decision_maker: mike
+    escalate_to_ceo_when: ["material spend", "production timing risk", "supply disruption"]
+
+  product:
+    description: "Product decisions, formulation, packaging direction"
+    default_capabilities: [product, packaging_design, manufacturing]
+    typical_decision_maker: adi
+
+  technology:
+    description: "Website, integrations, technical systems"
+    default_capabilities: [website, technical, integrations]
+    typical_decision_maker: mike
+
+  finance:
+    description: "Cash, payments, bookkeeping, financial reporting"
+    default_capabilities: [finance, accounts_payable, bookkeeping, financial_reporting]
+    typical_decision_maker: adi
+    # Finance splits by TASK TYPE, not by area. Payment execution -> Peter.
+    # Bookkeeping/reconciliation -> Brian. Business decisions -> Adi.
+    routing_note: "Never route by 'financial' alone; distinguish payment execution from bookkeeping from decision."
+
+  customer:
+    description: "Customer service, customer experience, feedback"
+    default_capabilities: [customer_service, customer_feedback]
+    typical_decision_maker: adi
+    aggregate_signals: true
+
+  design:
+    description: "Packaging, creative assets, mockups"
+    default_capabilities: [packaging_design, graphic_design]
+    typical_decision_maker: adi
+
+  business_development:
+    description: "Partnerships, new channels, business development"
+    default_capabilities: [partnerships, negotiation]
+    typical_decision_maker: adi
+
+  research:
+    description: "Research partnerships, grants, scientific work"
+    default_capabilities: [research_grants, research]
+    typical_decision_maker: adi
+
+  legal:
+    description: "Contracts, regulatory, counsel coordination"
+    default_capabilities: [legal_coordination]
+    typical_decision_maker: adi
+    approval_class: RED
+
+  people:
+    description: "Hiring, contractors, team"
+    default_capabilities: [hiring]
+    typical_decision_maker: adi
+    approval_class: RED
+
+  analytics:
+    description: "Performance measurement, reporting, business analytics"
+    default_capabilities: [analytics]
+    typical_decision_maker: adi
+
+  general:
+    description: "Uncategorized"
+    default_capabilities: []
+    typical_decision_maker: adi

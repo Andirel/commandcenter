@@ -1,0 +1,198 @@
+# people.yaml
+#
+# BOOTSTRAP CONFIGURATION -- not a permanent org chart.
+#
+# This is the system's starting understanding of who does what at 120/Life.
+# It is expected to drift as evidence accumulates from real correspondence.
+# Adding a person here (or in the database) must NEVER require a code change.
+#
+# Fields:
+#   capabilities.<name>.confidence   0-1, how sure we are they do this
+#   capabilities.<name>.proficiency  0-1, how good they are at it
+#   capabilities.<name>.level        primary | secondary | occasional
+#   confirmed: true                  human-asserted; evidence never silently overwrites
+#
+# Emails and Slack IDs are intentionally left blank. They are populated from
+# the directory during setup (scripts/sync-directory.ts) rather than guessed.
+
+people:
+
+  adi:
+    name: "Adi"
+    role: "CEO"
+    internal: true
+    discovery_status: confirmed
+    importance: 5
+    decision_authority: high
+    broad_generalist: true
+    # A hands-on CEO is eligible to own work in ANY business area. The system's
+    # job is not to keep work away from Adi, but to make sure Adi's attention
+    # goes to things that genuinely need it.
+    eligible_for_all_areas: true
+    capabilities:
+      strategy:            { confidence: 0.98, proficiency: 0.95, level: primary,   confirmed: true }
+      partnerships:        { confidence: 0.95, proficiency: 0.90, level: primary,   confirmed: true }
+      negotiation:         { confidence: 0.93, proficiency: 0.90, level: primary,   confirmed: true }
+      podcast_advertising: { confidence: 0.90, proficiency: 0.85, level: primary,   confirmed: true }
+      retail:              { confidence: 0.88, proficiency: 0.85, level: primary,   confirmed: true }
+      product:             { confidence: 0.88, proficiency: 0.85, level: primary,   confirmed: true }
+      finance:             { confidence: 0.85, proficiency: 0.80, level: primary,   confirmed: true }
+      copywriting:         { confidence: 0.80, proficiency: 0.80, level: secondary, confirmed: true }
+      paid_media:          { confidence: 0.75, proficiency: 0.70, level: secondary, confirmed: true }
+      analytics:           { confidence: 0.78, proficiency: 0.75, level: secondary, confirmed: true }
+      research_grants:     { confidence: 0.75, proficiency: 0.70, level: secondary, confirmed: true }
+      legal_coordination:  { confidence: 0.80, proficiency: 0.70, level: primary,   confirmed: true }
+      hiring:              { confidence: 0.85, proficiency: 0.80, level: primary,   confirmed: true }
+      website:             { confidence: 0.60, proficiency: 0.55, level: secondary, confirmed: true }
+      operations:          { confidence: 0.65, proficiency: 0.65, level: secondary, confirmed: true }
+      vendor_coordination: { confidence: 0.70, proficiency: 0.70, level: secondary, confirmed: true }
+    notes:
+      - "Hands-on CEO who performs work across essentially all areas."
+      - "Do not limit routing based on CEO title."
+      - "Optimize to protect attention without preventing hands-on ownership."
+      - "CEO dependency is not the same as CEO ownership -- always state the mode."
+
+  paul:
+    name: "Paul"
+    role: "Executive Assistant / Project Manager"
+    internal: true
+    discovery_status: confirmed
+    importance: 5
+    decision_authority: low
+    # The primary operational leverage point. Actively evaluated on every task:
+    # "can Paul take this off Adi's plate?"
+    leverage_candidate: true
+    capabilities:
+      project_management:  { confidence: 0.95, proficiency: 0.90, level: primary,   confirmed: true }
+      coordination:        { confidence: 0.95, proficiency: 0.90, level: primary,   confirmed: true }
+      follow_up:           { confidence: 0.95, proficiency: 0.92, level: primary,   confirmed: true }
+      administration:      { confidence: 0.95, proficiency: 0.90, level: primary,   confirmed: true }
+      research:            { confidence: 0.88, proficiency: 0.82, level: primary,   confirmed: true }
+      vendor_coordination: { confidence: 0.90, proficiency: 0.85, level: primary,   confirmed: true }
+      retail:              { confidence: 0.75, proficiency: 0.72, level: secondary, confirmed: true }
+      operations:          { confidence: 0.70, proficiency: 0.68, level: secondary, confirmed: true }
+    notes:
+      - "Highly capable virtual assistant; functions well beyond admin support."
+      - "Often appropriate for cross-functional execution and tracking."
+      - "Consider as project manager even when a specialist owns the task."
+      - "Do not overload indiscriminately -- weigh workload and complexity."
+
+  mike:
+    name: "Mike"
+    role: "COO / CTO"
+    internal: true
+    discovery_status: confirmed
+    importance: 5
+    decision_authority: high
+    # Broad operational AND technical ownership. Do not narrowly classify.
+    capabilities:
+      operations:          { confidence: 0.95, proficiency: 0.92, level: primary, confirmed: true }
+      supply_chain:        { confidence: 0.93, proficiency: 0.90, level: primary, confirmed: true }
+      manufacturing:       { confidence: 0.93, proficiency: 0.90, level: primary, confirmed: true }
+      inventory:           { confidence: 0.92, proficiency: 0.90, level: primary, confirmed: true }
+      production:          { confidence: 0.92, proficiency: 0.90, level: primary, confirmed: true }
+      logistics:           { confidence: 0.90, proficiency: 0.88, level: primary, confirmed: true }
+      fulfillment:         { confidence: 0.88, proficiency: 0.85, level: primary, confirmed: true }
+      website:             { confidence: 0.90, proficiency: 0.85, level: primary, confirmed: true }
+      technical:           { confidence: 0.92, proficiency: 0.88, level: primary, confirmed: true }
+      integrations:        { confidence: 0.90, proficiency: 0.85, level: primary, confirmed: true }
+      vendor_coordination: { confidence: 0.82, proficiency: 0.80, level: secondary, confirmed: true }
+      product:             { confidence: 0.75, proficiency: 0.75, level: secondary, confirmed: true }
+      analytics:           { confidence: 0.65, proficiency: 0.65, level: secondary, confirmed: true }
+    notes:
+      - "Do not classify as only operations or only technology."
+      - "Adi may make the decision while Mike owns execution."
+
+  ira:
+    name: "Ira"
+    role: "Customer Service"
+    internal: true
+    discovery_status: confirmed
+    importance: 3
+    decision_authority: low
+    capabilities:
+      customer_service:  { confidence: 0.95, proficiency: 0.90, level: primary,   confirmed: true }
+      customer_feedback: { confidence: 0.85, proficiency: 0.80, level: primary,   confirmed: true }
+    notes:
+      - "Customer-service trends should generate business signals, not a task per ticket."
+      - "Do not route customer-originated strategic decisions to Ira by default."
+
+  peter:
+    name: "Peter"
+    role: "Accounts Payable"
+    internal: true
+    discovery_status: confirmed
+    importance: 3
+    decision_authority: low
+    capabilities:
+      accounts_payable: { confidence: 0.95, proficiency: 0.90, level: primary, confirmed: true }
+      invoice_payments: { confidence: 0.95, proficiency: 0.92, level: primary, confirmed: true }
+    notes:
+      - "Peter handles invoice/payment EXECUTION."
+      - "He is not the owner of financial analysis. Do not conflate with Brian."
+
+  brian:
+    name: "Brian"
+    role: "Bookkeeping / Financials"
+    internal: true
+    discovery_status: confirmed
+    importance: 3
+    decision_authority: low
+    capabilities:
+      bookkeeping:         { confidence: 0.95, proficiency: 0.92, level: primary,   confirmed: true }
+      financial_reporting: { confidence: 0.92, proficiency: 0.88, level: primary,   confirmed: true }
+      analytics:           { confidence: 0.60, proficiency: 0.60, level: secondary, confirmed: true }
+    notes:
+      - "Brian handles bookkeeping and recurring financial management."
+      - "Do not route invoice payment to Brian; that is Peter."
+
+  buster:
+    name: "Buster"
+    role: "Organic Social"
+    internal: false
+    relationship_type: contractor
+    discovery_status: confirmed
+    importance: 3
+    capabilities:
+      organic_social:   { confidence: 0.92, proficiency: 0.88, level: primary, confirmed: true }
+      content_creation: { confidence: 0.90, proficiency: 0.85, level: primary, confirmed: true }
+    collaborates_with: [chase]
+
+  chase:
+    name: "Chase"
+    role: "Organic Social"
+    internal: false
+    relationship_type: contractor
+    discovery_status: confirmed
+    importance: 3
+    capabilities:
+      organic_social:   { confidence: 0.92, proficiency: 0.88, level: primary, confirmed: true }
+      content_creation: { confidence: 0.90, proficiency: 0.85, level: primary, confirmed: true }
+    collaborates_with: [buster]
+
+  julienne:
+    name: "Julienne"
+    role: "Designer"
+    internal: false
+    relationship_type: contractor
+    discovery_status: confirmed
+    importance: 3
+    capabilities:
+      packaging_design: { confidence: 0.93, proficiency: 0.90, level: primary,   confirmed: true }
+      graphic_design:   { confidence: 0.92, proficiency: 0.90, level: primary,   confirmed: true }
+      content_creation: { confidence: 0.65, proficiency: 0.65, level: secondary, confirmed: true }
+    notes:
+      - "Paul often coordinates delivery; Adi often approves."
+
+  susan:
+    name: "Susan"
+    role: "Podcast / Interview Support"
+    internal: false
+    relationship_type: contractor
+    discovery_status: confirmed
+    importance: 2
+    capabilities:
+      interview_support: { confidence: 0.85, proficiency: 0.85, level: occasional, confirmed: true }
+    notes:
+      - "Involved selectively, NOT the default podcast owner."
+      - "Include only when correspondence indicates an interview needs her."

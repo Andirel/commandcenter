@@ -1,0 +1,132 @@
+# priority-rules.yaml
+#
+# The deterministic half of the priority engine. Every weight here is tunable
+# without touching code, and every score the system produces must be
+# explainable in terms of these numbers.
+#
+# Base formula (see docs/architecture.md 2.7):
+#   priority = impact*3 + urgency*3 + risk*2 + relationship
+#            + strategic_importance + blocker_bonus
+#            + decision_dependency_bonus - effort_penalty
+
+weights:
+  impact: 3.0
+  urgency: 3.0
+  risk: 2.0
+  relationship: 1.0
+  strategic_importance: 1.0
+  blocker: 1.0                  # multiplied by blocker_score
+  decision_dependency: 1.0      # multiplied by ceo_dependency_score
+  effort_penalty: 0.5           # SUBTRACTED, multiplied by effort_score
+
+bonuses:
+  # A task that unblocks other work is worth more than its own score suggests.
+  blocks_other_tasks_each: 1.5
+  blocks_other_tasks_cap: 6.0
+
+  # A decision costs the CEO minutes but may unblock days of other work.
+  # This is why DECIDE/APPROVE items get a bonus while CEO-owned DO work
+  # does not: cheap CEO actions with large downstream effects rank highest.
+  decision_ready_bonus: 3.0     # everything is assembled; only judgment is missing
+  approve_only_bonus: 2.0       # a signature-level action
+
+  # An external party has been waiting on us; relationship cost accrues.
+  we_owe_external_bonus: 2.0
+
+  deadline_bonus:
+    overdue: 8.0
+    within_24h: 6.0
+    within_3d: 4.0
+    within_7d: 2.0
+    within_14d: 1.0
+    beyond: 0.0
+
+penalties:
+  # Work nobody has touched loses urgency but never disappears -- it surfaces
+  # in the "stale" review instead of silently rotting at the bottom.
+  stale_days_threshold: 14
+  stale_penalty: 2.0
+
+  # A proposed task the system invented and no human has accepted should not
+  # outrank confirmed work purely on model enthusiasm.
+  unconfirmed_proposal_penalty: 1.5
+
+  # Low-confidence interpretations are ranked conservatively.
+  low_confidence_threshold: 0.6
+  low_confidence_penalty: 2.0
+
+  # Blocked on someone else: real, but not actionable by the owner right now.
+  waiting_external_penalty: 1.0
+  waiting_internal_penalty: 0.5
+
+# ---------------------------------------------------------------------------
+# Signal-driven multipliers. Financial and operational reality should change
+# priority automatically -- e.g. a production payment coming due while
+# inventory is low must raise the production task on its own.
+# ---------------------------------------------------------------------------
+signal_multipliers:
+  cash_risk:            1.35
+  inventory_risk:       1.30
+  production_risk:      1.30
+  supply_disruption:    1.30
+  compliance_risk:      1.40
+  revenue_opportunity:  1.15
+  roas_decline:         1.15
+  customer_experience:  1.10
+
+# Combined-condition rules: several individually moderate facts that together
+# mean something urgent. These are the cross-functional cases a single-source
+# system cannot see.
+compound_rules:
+  - name: production_payment_and_low_inventory
+    when:
+      all:
+        - signal: cash_risk
+        - signal: inventory_risk
+    multiplier: 1.6
+    reason: "Production payment timing coincides with low inventory coverage."
+
+  - name: external_overdue_on_critical_path
+    when:
+      all:
+        - waiting_external_days_gte: 3
+        - blocks_other_tasks_gte: 1
+    bonus: 4.0
+    reason: "An external party is overdue and other work depends on it."
+
+  - name: decision_blocking_specialist
+    when:
+      all:
+        - ceo_action_mode_in: [DECIDE, APPROVE]
+        - blocks_other_tasks_gte: 1
+    bonus: 3.0
+    reason: "A short CEO decision is holding up someone else's execution."
+
+# ---------------------------------------------------------------------------
+# Ranking and presentation
+# ---------------------------------------------------------------------------
+ranking:
+  # Below this, an item does not appear in any brief. It stays in the system.
+  brief_inclusion_floor: 8.0
+
+  # A rank change smaller than this is noise; do not narrate it.
+  material_rank_change: 3
+
+  # A score change smaller than this does not write priority_history.
+  material_score_change: 1.5
+
+  daily_brief:
+    ceo_top_n: 5
+    paul_can_take_n: 5
+    decisions_n: 5
+    waiting_on_n: 8
+    risks_n: 3
+    opportunities_n: 3
+
+portfolio_review:
+  # The AI portfolio pass may adjust a deterministic score by at most this
+  # fraction. The deterministic layer stays the backbone; AI is a corrective,
+  # not a replacement.
+  max_ai_adjustment_ratio: 0.35
+  run_schedule: "0 5 * * 1-5"       # weekday mornings, before the brief
+  min_tasks_to_review: 5

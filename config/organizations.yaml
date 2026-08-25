@@ -1,0 +1,105 @@
+# organizations.yaml
+#
+# External partners are modeled as ORGANIZATIONS with individual people as
+# contacts. Never model an agency as if it were an employee.
+#
+# relationship_owner: who at 120/Life normally manages this relationship.
+#   Deliberately NOT inferred from "most recent email sender" -- Paul sending
+#   one message on Mike's behalf does not transfer the relationship.
+# execution_tracker: who chases operational follow-up, which is often a
+#   different person from the relationship owner.
+
+organizations:
+
+  one_twenty_life:
+    name: "120/Life"
+    type: internal
+    importance: 5
+    domains: []          # populated during directory sync
+    capabilities: []
+
+  radioactive_media:
+    name: "RadioActive Media"
+    type: agency
+    importance: 4
+    relationship_owner: adi
+    execution_tracker: paul
+    capabilities:
+      podcast_sourcing:            { confidence: 0.95, proficiency: 0.90, level: primary }
+      podcast_placement:           { confidence: 0.95, proficiency: 0.90, level: primary }
+      podcast_campaign_execution:  { confidence: 0.92, proficiency: 0.88, level: primary }
+      podcast_advertising:         { confidence: 0.95, proficiency: 0.90, level: primary }
+    notes:
+      - "Sources podcast opportunities, coordinates placements, quotes pricing."
+      - "Adi decides whether an opportunity is attractive; RadioActive executes."
+      - "Paul tracks required materials and deadlines."
+      - "Susan may participate if a specific interview requires her."
+
+  quartile:
+    name: "Quartile"
+    type: agency
+    importance: 4
+    relationship_owner: adi
+    execution_tracker: paul
+    capabilities:
+      paid_media:  { confidence: 0.95, proficiency: 0.88, level: primary }
+      google_ads:  { confidence: 0.95, proficiency: 0.88, level: primary }
+      bing_ads:    { confidence: 0.90, proficiency: 0.85, level: primary }
+      amazon_ads:  { confidence: 0.93, proficiency: 0.88, level: primary }
+      analytics:   { confidence: 0.75, proficiency: 0.75, level: secondary }
+    notes:
+      - "External execution partner for paid digital advertising."
+      - "Owns investigation of paid-media performance changes."
+      - "Adi receives only material recommendations and decisions."
+      - "Paul may track the response."
+
+# ---------------------------------------------------------------------------
+# Organization types recognized by the system. Discovered organizations are
+# classified into one of these; unrecognized ones default to 'other'.
+# ---------------------------------------------------------------------------
+organization_types:
+  - internal
+  - agency
+  - vendor
+  - retailer
+  - manufacturer
+  - media_partner
+  - research_partner
+  - professional_services
+  - financial
+  - logistics
+  - customer
+  - other
+
+# ---------------------------------------------------------------------------
+# Domain-based inference hints for people discovery. Free/consumer domains must
+# never be used to infer an organization -- two people at gmail.com are not
+# colleagues.
+# ---------------------------------------------------------------------------
+generic_email_domains:
+  - gmail.com
+  - googlemail.com
+  - yahoo.com
+  - outlook.com
+  - hotmail.com
+  - live.com
+  - icloud.com
+  - me.com
+  - aol.com
+  - proton.me
+  - protonmail.com
+  - msn.com
+
+# Senders matching these patterns are noise: never create a person, an
+# organization, or a task from them.
+noreply_patterns:
+  - "noreply@"
+  - "no-reply@"
+  - "donotreply@"
+  - "do-not-reply@"
+  - "notifications@"
+  - "mailer-daemon@"
+  - "bounce"
+  - "postmaster@"
+  - "automated@"
+  - "alerts@"

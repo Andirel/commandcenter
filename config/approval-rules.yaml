@@ -1,0 +1,135 @@
+# approval-rules.yaml
+#
+# What the system may do on its own, what needs a human, and what is never
+# automated. Through Phase 5 NOTHING external is sent regardless of class.
+# Phase 6 adds drafts. Autonomy is Phase 10 and GREEN-only.
+
+# Global kill switch. While false, no outbound message of any kind is sent,
+# whatever the class says.
+global:
+  external_sending_enabled: false
+  draft_creation_enabled: false      # flip on at Phase 6
+  internal_slack_posting_enabled: true   # briefs and notifications only
+
+classes:
+
+  GREEN:
+    description: "Potentially automatable once reliability is demonstrated"
+    requires_human_approval: false
+    phase_available_from: 10
+    examples:
+      - "Simple acknowledgment of a received document"
+      - "Scheduling logistics with an already-agreed party"
+      - "Routine internal reminder"
+      - "Request for information both sides already agreed to exchange"
+    conditions:
+      - no_pricing_content: true
+      - no_commitment_created: true
+      - recipient_relationship_exists: true
+      - value_at_stake_below: 1000
+
+  YELLOW:
+    description: "Human approval required before anything leaves the building"
+    requires_human_approval: true
+    phase_available_from: 6
+    applies_to:
+      - vendors
+      - retailers
+      - agencies
+      - podcast_partners
+      - negotiations
+      - material_operational_messages
+      - pricing_discussions
+      - new_external_contacts
+      - anything_creating_a_commitment
+
+  RED:
+    description: "Always manual. No draft is auto-sent, ever, under any policy."
+    requires_human_approval: true
+    never_automate: true
+    phase_available_from: null
+    applies_to:
+      - legal
+      - regulatory
+      - contracts
+      - employment
+      - investors
+      - health_or_product_claims
+      - disputes
+      - sensitive_finances
+      - major_expenditures
+      - reputationally_sensitive_communication
+
+# ---------------------------------------------------------------------------
+# Classification triggers. Any match escalates to the highest class matched --
+# escalation is one-directional and a RED match can never be downgraded.
+# ---------------------------------------------------------------------------
+triggers:
+  red_keywords:
+    - contract
+    - agreement
+    - terms and conditions
+    - attorney
+    - counsel
+    - lawsuit
+    - litigation
+    - dispute
+    - claim
+    - fda
+    - regulatory
+    - compliance violation
+    - investor
+    - cap table
+    - fundraise
+    - term sheet
+    - offer letter
+    - termination
+    - severance
+    - salary
+    - equity
+    - nda
+    - indemnif
+    - liability
+    - health claim
+    - clinical
+    - efficacy
+
+  red_when_amount_above: 25000
+
+  yellow_keywords:
+    - pricing
+    - quote
+    - rate card
+    - proposal
+    - negotiat
+    - discount
+    - purchase order
+    - invoice
+    - payment terms
+    - deadline change
+    - scope
+
+  yellow_when_amount_above: 1000
+
+  # A first message to someone we have never corresponded with is never GREEN.
+  yellow_when_new_contact: true
+
+# ---------------------------------------------------------------------------
+# Approval routing: who approves what
+# ---------------------------------------------------------------------------
+approvers:
+  default: adi
+  by_business_area:
+    operations: mike
+    technology: mike
+    finance: adi
+    legal: adi
+    people: adi
+  # Above this value the CEO approves regardless of business area.
+  ceo_approval_required_above: 5000
+
+audit:
+  # Every automated action is logged and must be reversible.
+  log_all_actions: true
+  require_reversibility: true
+  retain_drafts_days: 90

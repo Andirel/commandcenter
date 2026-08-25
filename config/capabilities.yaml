@@ -1,0 +1,209 @@
+# capabilities.yaml
+#
+# What kinds of work exist at 120/Life, independent of who performs them.
+# The routing engine reasons over capabilities, not departments.
+#
+# specialist_only: work requiring this capability generally cannot be handed to
+#   a capable generalist coordinator. It gates the Paul leverage engine --
+#   Paul may PROJECT-MANAGE specialist work, but must not be made its owner.
+
+capabilities:
+  strategy:
+    description: "Company direction, positioning, major business choices"
+    business_area: strategy
+    specialist_only: false
+
+  project_management:
+    description: "Tracking work, chasing dependencies, keeping things from falling through"
+    business_area: operations
+    specialist_only: false
+
+  research:
+    description: "Gathering information, comparing options, assembling inputs for a decision"
+    business_area: general
+    specialist_only: false
+
+  coordination:
+    description: "Scheduling, organizing, aligning multiple parties"
+    business_area: operations
+    specialist_only: false
+
+  follow_up:
+    description: "Chasing outstanding items until they arrive"
+    business_area: operations
+    specialist_only: false
+
+  administration:
+    description: "Forms, paperwork, document collection, routine business tasks"
+    business_area: operations
+    specialist_only: false
+
+  vendor_coordination:
+    description: "Working with vendors on logistics, documents, scheduling"
+    business_area: operations
+    specialist_only: false
+
+  retail:
+    description: "Retailer relationships, onboarding, buyer communication"
+    business_area: retail
+    specialist_only: false
+
+  podcast_advertising:
+    description: "Podcast ad placements, sourcing, campaign coordination"
+    business_area: marketing
+    specialist_only: false
+
+  paid_media:
+    description: "Google, Bing, Amazon paid advertising management and optimization"
+    business_area: marketing
+    specialist_only: true
+
+  organic_social:
+    description: "Organic social content, posting, content calendar"
+    business_area: marketing
+    specialist_only: true
+
+  content_creation:
+    description: "Video, photo, written content production"
+    business_area: marketing
+    specialist_only: true
+
+  graphic_design:
+    description: "Visual assets, mockups, creative deliverables"
+    business_area: design
+    specialist_only: true
+
+  packaging_design:
+    description: "Packaging artwork, dielines, packaging updates"
+    business_area: design
+    specialist_only: true
+
+  copywriting:
+    description: "Marketing copy, website copy, email copy"
+    business_area: marketing
+    specialist_only: false
+
+  manufacturing:
+    description: "Production runs, manufacturer coordination, formulation execution"
+    business_area: operations
+    specialist_only: true
+
+  inventory:
+    description: "Stock levels, forecasting, replenishment"
+    business_area: operations
+    specialist_only: true
+
+  production:
+    description: "Production planning and scheduling"
+    business_area: operations
+    specialist_only: true
+
+  supply_chain:
+    description: "Sourcing, components, supplier management"
+    business_area: operations
+    specialist_only: true
+
+  logistics:
+    description: "Shipping, freight, 3PL, fulfillment operations"
+    business_area: operations
+    specialist_only: true
+
+  fulfillment:
+    description: "Order fulfillment execution and exceptions"
+    business_area: operations
+    specialist_only: true
+
+  website:
+    description: "Website changes, ecommerce storefront, site content implementation"
+    business_area: technology
+    specialist_only: true
+
+  technical:
+    description: "Technical implementation, systems, infrastructure"
+    business_area: technology
+    specialist_only: true
+
+  integrations:
+    description: "System integrations, APIs, data flow between tools"
+    business_area: technology
+    specialist_only: true
+
+  finance:
+    description: "Financial decisions, cash management, financial strategy"
+    business_area: finance
+    specialist_only: false
+
+  accounts_payable:
+    description: "Invoice processing and vendor payment execution"
+    business_area: finance
+    specialist_only: true
+
+  invoice_payments:
+    description: "Executing payments against approved invoices"
+    business_area: finance
+    specialist_only: true
+
+  bookkeeping:
+    description: "Books, reconciliations, recurring financial management"
+    business_area: finance
+    specialist_only: true
+
+  financial_reporting:
+    description: "Financial reports, weekly financials, statements"
+    business_area: finance
+    specialist_only: true
+
+  customer_service:
+    description: "Customer inquiries, issues, support"
+    business_area: customer
+    specialist_only: true
+
+  customer_feedback:
+    description: "Aggregating and interpreting customer sentiment and complaints"
+    business_area: customer
+    specialist_only: false
+
+  research_grants:
+    description: "Research partnerships, grants, scientific collaboration"
+    business_area: research
+    specialist_only: false
+
+  analytics:
+    description: "Business analytics, performance measurement, reporting"
+    business_area: analytics
+    specialist_only: false
+
+  operations:
+    description: "General operational ownership and troubleshooting"
+    business_area: operations
+    specialist_only: false
+
+  partnerships:
+    description: "Business development, partnership sourcing and negotiation"
+    business_area: business_development
+    specialist_only: false
+
+  negotiation:
+    description: "Commercial negotiation on pricing and terms"
+    business_area: business_development
+    specialist_only: false
+
+  legal_coordination:
+    description: "Coordinating with counsel; contract routing (never legal advice)"
+    business_area: legal
+    specialist_only: false
+
+  interview_support:
+    description: "Podcast and interview subject-matter participation"
+    business_area: marketing
+    specialist_only: true
+
+  product:
+    description: "Product decisions, formulation direction, roadmap"
+    business_area: product
+    specialist_only: false
+
+  hiring:
+    description: "Hiring, contractor selection, team decisions"
+    business_area: people
+    specialist_only: false

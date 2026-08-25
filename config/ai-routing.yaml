@@ -1,0 +1,113 @@
+# ai-routing.yaml
+#
+# Which model handles which job, and the cost/reliability discipline around it.
+# Model IDs are configured here so they can be changed without a code change.
+
+defaults:
+  provider: anthropic
+  max_retries: 1               # then park as NEEDS_REVIEW; never silently drop
+  timeout_ms: 60000
+  persist_all_interpretations: true   # every call is auditable
+
+models:
+  fast:      "claude-haiku-4-5-20251001"
+  balanced:  "claude-sonnet-5"
+  deep:      "claude-opus-5"
+
+# ---------------------------------------------------------------------------
+# Task-to-model routing. Cheap models handle high-volume classification; deep
+# models handle judgment that affects where attention goes.
+# ---------------------------------------------------------------------------
+tasks:
+  email_triage:
+    model: fast
+    prompt: email-classification/triage
+    prompt_version: "1.0.0"
+    max_tokens: 1024
+    description: "Is this even worth interpreting? Runs before any expensive call."
+
+  email_classification:
+    model: balanced
+    prompt: email-classification/classify
+    prompt_version: "1.0.0"
+    max_tokens: 2048
+
+  people_discovery:
+    model: fast
+    prompt: people-discovery/identify
+    prompt_version: "1.0.0"
+    max_tokens: 1024
+
+  commitment_extraction:
+    model: balanced
+    prompt: commitment-extraction/extract
+    prompt_version: "1.0.0"
+    max_tokens: 2048
+
+  owner_routing:
+    model: balanced
+    prompt: owner-routing/route
+    prompt_version: "1.0.0"
+    max_tokens: 1536
+    description: "Deterministic scoring runs first; AI resolves ties and writes the reason."
+
+  meeting_analysis:
+    model: deep
+    prompt: meeting-analysis/analyze
+    prompt_version: "1.0.0"
+    max_tokens: 4096
+    description: "Zoom attribution is evidence, not truth -- this needs real judgment."
+
+  priority_review:
+    model: deep
+    prompt: priority-review/portfolio
+    prompt_version: "1.0.0"
+    max_tokens: 4096
+    description: "Looks at the whole portfolio, not one task at a time."
+
+  email_drafting:
+    model: deep
+    prompt: email-drafting/draft
+    prompt_version: "1.0.0"
+    max_tokens: 2048
+
+  daily_brief:
+    model: deep
+    prompt: daily-brief/compose
+    prompt_version: "1.0.0"
+    max_tokens: 4096
+
+  completion_detection:
+    model: fast
+    prompt: email-classification/completion
+    prompt_version: "1.0.0"
+    max_tokens: 1024
+
+# ---------------------------------------------------------------------------
+# Cost discipline. The objective is business progress per unit of attention,
+# not number of AI calls -- so the cheapest correct path is always preferred.
+# ---------------------------------------------------------------------------
+cost_controls:
+  # Skip AI entirely for obvious noise. This is the single largest saving.
+  short_circuit_before_ai:
+    - noreply_sender: true
+    - newsletter_headers: true       # List-Unsubscribe, Precedence: bulk
+    - automated_receipt: true
+    - calendar_invite_only: true
+    - out_of_office: true
+    - duplicate_source_id: true
+
+  cache_stable_context: true         # team model + capability graph change rarely
+  batch_where_possible: true
+  daily_call_budget_warn: 2000
+  daily_call_budget_halt: 5000       # halt and alert rather than run up a bill
+
+# ---------------------------------------------------------------------------
+# Confidence gates. Below threshold, the system asks rather than guesses.
+# ---------------------------------------------------------------------------
+confidence_gates:
+  create_task: 0.60
+  auto_route: 0.45
+  auto_complete: 0.85
+  auto_merge: 0.80
+  send_anything: 0.95                # academic while sending is disabled

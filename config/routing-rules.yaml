@@ -1,0 +1,223 @@
+# routing-rules.yaml
+#
+# The owner-selection engine's tunable policy. No person is hard-coded in the
+# routing CODE -- everything name-specific lives here or in the database.
+#
+# Reminder of the governing question (docs/team-model.md 1):
+#   NOT "is this a CEO task?"
+#   BUT "who is genuinely best positioned?" and "does this actually need Adi?"
+
+engine_version: "1.0.0"
+
+# ---------------------------------------------------------------------------
+# Candidate scoring. A candidate's fit for primary ownership.
+# ---------------------------------------------------------------------------
+scoring:
+  capability_match: 4.0        # x mean(confidence * proficiency) over required capabilities
+  primary_capability_bonus: 1.5
+  continuity_bonus: 3.0        # already owns the initiative or this relationship
+  relationship_owner_bonus: 2.5
+  recent_involvement_bonus: 1.5  # participated in the source event
+  specialist_required_bonus: 2.0
+
+  # Workload is a real constraint, not a tiebreaker afterthought.
+  workload_penalty_per_open_task: 0.15
+  workload_penalty_cap: 3.0
+  overdue_penalty_per_task: 0.35
+  overdue_penalty_cap: 3.0
+
+  # Moving work to someone uninvolved has a cost: context transfer, delay,
+  # and the chance it stalls. Only worth it when the fit gain is real.
+  handoff_friction_penalty: 1.0
+  min_gain_to_reassign: 2.0
+
+  provisional_person_penalty: 4.0    # discovered/provisional people rarely own
+  external_person_penalty: 2.0       # prefer an internal owner where sensible
+
+# ---------------------------------------------------------------------------
+# CEO attention policy
+# ---------------------------------------------------------------------------
+ceo:
+  person: adi
+
+  # Adi is eligible to own work in every business area. This is deliberate --
+  # see docs/team-model.md 3. The list below is what Adi should NOT be
+  # defaulted into, not what Adi is forbidden from doing.
+  eligible_for_all_areas: true
+
+  # When these are true, the CEO is genuinely required.
+  requires_ceo_when:
+    - spend_above: 5000               # currency units; approval, not execution
+    - contract_or_legal: true
+    - investor_related: true
+    - hiring_or_termination: true
+    - pricing_or_offer_change: true
+    - partnership_commitment: true
+    - public_or_reputational: true
+    - strategic_direction: true
+
+  # Work that arrives attributed to Adi but is better executed elsewhere.
+  # Attribution is evidence, not instruction -- especially from Zoom.
+  reconsider_ceo_attribution_when:
+    - task_is_information_gathering: true
+    - task_is_document_collection: true
+    - task_is_scheduling: true
+    - task_is_routine_vendor_followup: true
+    - task_is_status_chasing: true
+    - task_is_administrative: true
+
+  # Below this dependency score, do not put it in front of Adi at all.
+  brief_dependency_floor: 2
+
+# ---------------------------------------------------------------------------
+# Paul leverage engine (docs/team-model.md 10)
+# ---------------------------------------------------------------------------
+leverage:
+  person: paul
+
+  # Capability classes Paul can own end-to-end.
+  can_own_capabilities:
+    - project_management
+    - coordination
+    - follow_up
+    - administration
+    - research
+    - vendor_coordination
+
+  # Paul project-manages specialist work rather than owning it.
+  can_project_manage_when_specialist_owns: true
+
+  # Never make Paul the OWNER of these, regardless of capacity. He may still
+  # track them.
+  never_owner_of_capabilities:
+    - manufacturing
+    - production
+    - supply_chain
+    - inventory
+    - technical
+    - integrations
+    - website
+    - accounts_payable
+    - invoice_payments
+    - bookkeeping
+    - financial_reporting
+    - paid_media
+    - packaging_design
+    - graphic_design
+    - organic_social
+    - customer_service
+
+  # Do not duplicate work a specialist already executes. Explicitly listed
+  # because "Paul should follow up on the invoice" is a tempting, wasteful
+  # suggestion when Peter simply pays it.
+  do_not_duplicate:
+    - capability: invoice_payments
+      reason: "Peter executes payments; a parallel Paul task adds no value."
+    - capability: bookkeeping
+      reason: "Brian owns the books; coordination adds friction, not leverage."
+    - capability: customer_service
+      reason: "Ira handles tickets directly."
+
+  # Guardrails against overloading the leverage point.
+  max_open_tasks_soft: 25       # beyond this, require a stronger leverage case
+  max_open_tasks_hard: 40       # beyond this, stop proposing Paul as owner
+  min_leverage_value: 1.0       # estimated CEO-hours saved must clear this
+
+# ---------------------------------------------------------------------------
+# Explicit routing hints. Deliberately few: these encode genuine role
+# distinctions the capability graph alone gets wrong, not a shadow org chart.
+# ---------------------------------------------------------------------------
+hints:
+  # The finance split is the single most consequential distinction to preserve.
+  - name: invoice_payment_to_ap
+    match:
+      any_keyword: ["invoice", "bill payment", "remittance", "pay the vendor", "past due invoice", "w-9", "ach details"]
+      not_keyword: ["reconcile", "reconciliation", "bookkeeping", "books", "ledger", "close the month"]
+    required_capabilities: [invoice_payments]
+    reason: "Invoice/payment execution belongs to accounts payable, not bookkeeping."
+
+  - name: bookkeeping_discrepancy_to_bookkeeper
+    match:
+      any_keyword: ["reconcile", "reconciliation", "bookkeeping", "books", "ledger", "discrepancy", "month-end", "financial statement", "p&l", "balance sheet"]
+    required_capabilities: [bookkeeping]
+    reason: "Bookkeeping and reconciliation belong to the bookkeeper, not accounts payable."
+
+  - name: paid_media_to_agency
+    match:
+      any_keyword: ["roas", "google ads", "bing", "amazon ads", "cpc", "ad spend", "campaign performance", "acos"]
+    external_organization_capability: paid_media
+    reason: "Paid-media investigation is owned by the external agency partner."
+
+  - name: podcast_opportunity
+    match:
+      any_keyword: ["podcast", "episode sponsorship", "host read", "rate card", "podcast placement"]
+    external_organization_capability: podcast_sourcing
+    decision_required: true
+    reason: "Podcast sourcing sits with the media partner; the spend decision sits with the CEO."
+
+  - name: production_and_supply
+    match:
+      any_keyword: ["production run", "manufacturer", "co-packer", "batch", "formulation", "lead time", "raw material", "coa", "certificate of analysis"]
+    required_capabilities: [manufacturing, production, supply_chain]
+    reason: "Manufacturing and supply matters require operational ownership."
+
+  - name: inventory
+    match:
+      any_keyword: ["inventory", "stock level", "out of stock", "reorder", "forecast", "replenish", "safety stock"]
+    required_capabilities: [inventory]
+    reason: "Inventory matters require operational ownership."
+
+  - name: website_and_technical
+    match:
+      any_keyword: ["website", "shopify", "landing page", "checkout", "integration", "api", "site speed", "404", "subscription flow"]
+    required_capabilities: [website, technical]
+    reason: "Website and technical implementation require technical ownership."
+
+  - name: retailer_onboarding
+    match:
+      any_keyword: ["vendor form", "onboarding packet", "retailer portal", "new vendor setup", "vendor agreement", "edi", "item setup"]
+    required_capabilities: [administration, retail, coordination]
+    leverage_hint: PAUL_CAN_OWN
+    reason: "Retail onboarding paperwork is coordination work, not CEO work."
+
+  - name: packaging_design
+    match:
+      any_keyword: ["packaging", "label", "dieline", "mockup", "artwork", "carton"]
+    required_capabilities: [packaging_design]
+    reason: "Packaging artwork requires design capability."
+
+  - name: customer_service_pattern
+    match:
+      any_keyword: ["customers keep", "multiple customers", "recurring complaint", "support trend", "customers report"]
+    aggregate_as_signal: true
+    reason: "Customer-service patterns are business signals, not individual tickets."
+
+# ---------------------------------------------------------------------------
+# Evidence thresholds. High-impact routing changes need more proof than
+# low-impact ones (docs/implementation-plan.md 6.4).
+# ---------------------------------------------------------------------------
+evidence_thresholds:
+  create_provisional_person: 1
+  promote_to_provisional: 2
+  promote_to_confirmed: 6
+  confirmed_requires_days: 14
+
+  capability_edge_create: 2
+  capability_edge_strengthen: 1
+
+  # Reassigning ownership away from a current owner.
+  reassign_low_impact_confidence: 0.65
+  reassign_high_impact_confidence: 0.85
+  high_impact_when_priority_above: 20
+
+  # Below this, the routing engine refuses to guess and marks NEEDS_REVIEW.
+  min_routing_confidence: 0.45
+
+# ---------------------------------------------------------------------------
+# Confidence decay: capability edges that stop being exercised lose confidence
+# so the model tracks the company as it is now, not as it was a year ago.
+# ---------------------------------------------------------------------------
+decay:
+  half_life_days: 180
+  floor: 0.25
+  exempt_manually_confirmed: true
