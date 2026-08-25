@@ -39,9 +39,18 @@ export interface MatchOutcome {
   candidates: ScoredMatch[];
 }
 
-/** Above this we act; between the two we ask; below the lower we create. */
-export const MERGE_THRESHOLD = 0.72;
-export const REVIEW_THRESHOLD = 0.5;
+/**
+ * Above MERGE we act; between the two we ask; below REVIEW we create.
+ *
+ * Calibrated against the normalized scale (see scoreCandidates): an identical
+ * title with no other context scores 1.00, the same activity reworded ~0.95, a
+ * genuinely ambiguous pair ~0.73, and unrelated work ~0.38.
+ */
+export const MERGE_THRESHOLD = 0.88;
+export const REVIEW_THRESHOLD = 0.60;
+
+/** Two candidates closer than this are treated as a tie regardless of score. */
+export const TIE_MARGIN = 0.05;
 
 const WEIGHTS = {
   title: 0.35,
@@ -57,10 +66,12 @@ export function scoreCandidates(input: MatchCandidateInput, openTasks: Task[]): 
 
   const scored = openTasks.map((task) => {
     const taskText = `${task.title} ${task.description ?? ''}`;
+    const taskParticipants = collectParticipants(task);
+
     const signals: Record<string, number> = {
       title: tokenSimilarity(input.title, task.title),
       trigram: trigramSimilarity(inputText, taskText),
-      participants: participantOverlap(input.participantPersonIds, collectParticipants(task)),
+      participants: participantOverlap(input.participantPersonIds, taskParticipants),
       initiative: input.initiativeId && input.initiativeId === task.initiativeId ? 1 : 0,
       temporal: temporalProximity(input.occurredAt, task.lastActivityAt ?? task.createdAt ?? input.occurredAt),
       counterparty:
@@ -68,11 +79,34 @@ export function scoreCandidates(input: MatchCandidateInput, openTasks: Task[]): 
           ? 1 : 0,
     };
 
-    const similarity = Object.entries(WEIGHTS).reduce(
-      (sum, [key, weight]) => sum + (signals[key] ?? 0) * weight,
-      0,
-    );
+    /*
+     * Only signals that CAN be evaluated contribute to the denominator.
+     *
+     * Scoring against the full weight regardless of availability silently
+     * penalizes thin context: with no resolved people, no initiative and no
+     * counterparty, 40% of the weight is unreachable and even a perfect title
+     * plus perfect recency tops out around 0.5. Two reports of one incident
+     * then read as unrelated. Early on — before people are resolved and
+     * initiatives exist — that is the normal case, not the edge case.
+     */
+    const applicable: Record<string, boolean> = {
+      title: true,
+      trigram: true,
+      temporal: true,
+      participants: input.participantPersonIds.length > 0 && taskParticipants.length > 0,
+      initiative: Boolean(input.initiativeId && task.initiativeId),
+      counterparty: Boolean(input.externalOrganizationId && task.externalCounterpartyOrganizationId),
+    };
 
+    let weighted = 0;
+    let totalWeight = 0;
+    for (const [key, weight] of Object.entries(WEIGHTS)) {
+      if (!applicable[key]) continue;
+      weighted += (signals[key] ?? 0) * weight;
+      totalWeight += weight;
+    }
+
+    const similarity = totalWeight > 0 ? weighted / totalWeight : 0;
     return { task, similarity: round(similarity), signals: roundAll(signals), exactThread: false };
   });
 
@@ -132,25 +166,27 @@ export function matchTask(
     };
   }
 
+  // A near-tie is a reason to ask at ANY score. Merging into the wrong one of
+  // two equally-good matches silently destroys a record, and a high absolute
+  // score does not make the choice between them any safer.
+  const runnerUp = candidates[1];
+  if (runnerUp && runnerUp.similarity >= REVIEW_THRESHOLD &&
+      best.similarity - runnerUp.similarity < TIE_MARGIN) {
+    return {
+      decision: 'NEEDS_REVIEW',
+      matchedTask: best.task,
+      similarity: best.similarity,
+      reason: 'Two existing tasks match about equally well; a wrong merge would lose information.',
+      candidates,
+    };
+  }
+
   if (best.similarity >= MERGE_THRESHOLD) {
     return {
       decision: 'UPDATE_EXISTING',
       matchedTask: best.task,
       similarity: best.similarity,
       reason: `Matches "${best.task.title}" (${best.similarity.toFixed(2)}); attaching as further evidence.`,
-      candidates,
-    };
-  }
-
-  // Two candidates close together is itself a reason to ask: merging into the
-  // wrong one of a near-tie is exactly the failure worth avoiding.
-  const runnerUp = candidates[1];
-  if (runnerUp && best.similarity - runnerUp.similarity < 0.08) {
-    return {
-      decision: 'NEEDS_REVIEW',
-      matchedTask: best.task,
-      similarity: best.similarity,
-      reason: 'Two existing tasks match about equally well; a wrong merge would lose information.',
       candidates,
     };
   }

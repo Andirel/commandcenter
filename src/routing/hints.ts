@@ -79,8 +79,24 @@ export function resolveCapabilities(
   for (const cap of req.requiredCapabilities) {
     if (known.has(cap)) out.add(cap);
   }
-  for (const hint of hints) {
-    for (const cap of hint.required_capabilities) if (known.has(cap)) out.add(cap);
+
+  /*
+   * PRECEDENCE, not union.
+   *
+   * When interpretation supplied explicit capabilities it read the body and is
+   * better informed than a keyword rule. Adding hint capabilities on top
+   * broadens the requirement with things the work does not need: "send our
+   * interview Q&As to RadioActive" matched the podcast rule, gained
+   * `podcast_advertising`, and was consequently handed to the agency — who
+   * were never going to write our answers.
+   *
+   * Hints still contribute their reason text and their external-organization
+   * identification; they just stop dictating what the work requires.
+   */
+  if (out.size === 0) {
+    for (const hint of hints) {
+      for (const cap of hint.required_capabilities) if (known.has(cap)) out.add(cap);
+    }
   }
 
   // Business area is the WEAKEST signal and is only a fallback. In particular,

@@ -83,6 +83,7 @@ leverage:
     - administration
     - research
     - vendor_coordination
+    - retail
 
   # Paul project-manages specialist work rather than owning it.
   can_project_manage_when_specialist_owns: true
@@ -94,6 +95,8 @@ leverage:
     - production
     - supply_chain
     - inventory
+    - logistics
+    - fulfillment
     - technical
     - integrations
     - website

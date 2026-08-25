@@ -1223,7 +1223,8 @@ export const CONFIG: SystemConfig = {
         "follow_up",
         "administration",
         "research",
-        "vendor_coordination"
+        "vendor_coordination",
+        "retail"
       ],
       "can_project_manage_when_specialist_owns": true,
       "never_owner_of_capabilities": [
@@ -1231,6 +1232,8 @@ export const CONFIG: SystemConfig = {
         "production",
         "supply_chain",
         "inventory",
+        "logistics",
+        "fulfillment",
         "technical",
         "integrations",
         "website",

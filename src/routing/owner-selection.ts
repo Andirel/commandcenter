@@ -45,7 +45,28 @@ export function routeOwnership(req: RoutingRequest, ctx: RoutingContext): Routin
   // its own campaign performance is the owner of that investigation; we track
   // it, we do not perform it.
   const counterparty = resolveCounterparty(req, hints, team);
-  const externallyOwned = counterparty !== null && hints.some((h) => h.external_organization_capability);
+
+  /*
+   * An external partner owns EXECUTION only when the work is the thing they do.
+   *
+   * A keyword hint identifies the relationship, not the direction of the work:
+   * "podcast" matches both "RadioActive will source hosts" and "send our
+   * interview Q&As to RadioActive". The second is ours. So external ownership
+   * additionally requires that the partner's capability is actually what the
+   * task needs — or that nobody internal can do it at all.
+   */
+  const hintedExternal = hints.some((h) => h.external_organization_capability);
+
+  // The test is whether the PARTNER HOLDS the capability the work needs.
+  // RadioActive holds podcast_advertising, so sourcing a placement is theirs;
+  // it holds neither interview_support nor copywriting, so writing our own
+  // interview answers is not.
+  const partnerCoversWork =
+    counterparty !== null &&
+    (capabilities.length === 0 ||
+      capabilities.some((c) => counterparty.capabilities.some((edge) => edge.capability === c)));
+
+  const externallyOwned = counterparty !== null && hintedExternal && partnerCoversWork;
 
   // --- 3. Score internal candidates -----------------------------------------
   const candidates = scoreCandidates(req, capabilities, specialistRequired, ctx);
@@ -196,6 +217,25 @@ function scoreCandidates(
         disqualificationReason = 'specialist capability required; coordinator may track but not own';
       }
       if (!disqualified && strength > 0) components.specialist = s.specialist_required_bonus;
+
+      /*
+       * Missing the specialist capability outright is disqualifying for
+       * OWNERSHIP, not merely a lower score.
+       *
+       * matchStrength averages across the required capabilities, so someone
+       * with a strong generalist capability and NOTHING on the specialist one
+       * can out-average the specialist. On real data that put ASN/fulfillment
+       * work on the coordinator because they scored high on "administration".
+       * Averaging is right for ranking similar candidates and wrong for
+       * deciding whether someone can do the job at all.
+       */
+      const missingSpecialist = capabilities.filter(
+        (c) => team.getCapability(c)?.specialistOnly && !team.match(person.id, c),
+      );
+      if (!disqualified && missingSpecialist.length) {
+        disqualified = true;
+        disqualificationReason = `lacks required specialist capability: ${missingSpecialist.join(', ')}`;
+      }
     }
 
     // Continuity: already carrying this initiative or this relationship.

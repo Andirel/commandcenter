@@ -38,7 +38,68 @@
   STATE.corrections = STATE.corrections || {};
   STATE.dismissed = STATE.dismissed || [];
 
-  var VIEW = { tasks: [], feed: [], meetings: [], waiting: [], connectors: {} };
+  /**
+   * The interpreted state document, embedded at build time by a sync run.
+   * This is the rich path: bodies were read, capabilities extracted, and
+   * priority scored. The live connector pull is a thinner supplement that
+   * routes on metadata alone, and the UI labels which is which.
+   */
+  var DATA = (function () {
+    var node = document.getElementById('cc-data');
+    if (!node) return null;
+    try { return JSON.parse(node.textContent); } catch (e) { return null; }
+  })();
+
+  var VIEW = { tasks: [], feed: [], meetings: [], waiting: [], connectors: {}, live: [] };
+
+  /** Normalize a state task and a live-routed task into one render shape. */
+  function fromState(t) {
+    return {
+      id: t.id,
+      title: t.title,
+      summary: t.summary,
+      source: t.source,
+      link: t.link,
+      at: t.occurredAt,
+      score: t.score,
+      rank: t.rank,
+      drivers: t.drivers || [],
+      owner: t.primaryOwner,
+      projectManager: t.projectManager,
+      decisionMaker: t.decisionMaker,
+      externalParty: t.externalParty,
+      ceoRequired: t.ceoRequired,
+      mode: t.ceoActionMode,
+      leverage: t.leverageClass,
+      approvalClass: t.approvalClass,
+      deadline: t.deadline,
+      reason: t.routingReason,
+      attributedTo: t.attributedTo,
+      attributionOverridden: t.attributionOverridden,
+      interpreted: t.interpreted,
+      needsReview: t.needsReview,
+      possibleDuplicateOf: t.possibleDuplicateOf || null,
+      duplicateSimilarity: t.duplicateSimilarity || null
+    };
+  }
+
+  function fromLive(t) {
+    var r = t.routed;
+    return {
+      id: t.id, title: t.title, summary: t.preview || null, source: t.source,
+      link: t.link, at: t.at, score: 0, rank: null, drivers: [],
+      owner: E.lookup.personName(r.primaryOwnerPersonId),
+      projectManager: E.lookup.personName(r.projectManagerPersonId),
+      decisionMaker: E.lookup.personName(r.decisionMakerPersonId),
+      externalParty: E.lookup.orgName(r.externalCounterpartyOrganizationId),
+      ceoRequired: r.ceoRequired, mode: r.ceoActionMode,
+      leverage: r.leverage.classification, approvalClass: r.approvalClass,
+      deadline: null, reason: r.reason,
+      attributedTo: t.attributedTo || null, attributionOverridden: false,
+      interpreted: false, needsReview: r.needsReview,
+      possibleDuplicateOf: null, duplicateSimilarity: null
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // Small DOM helpers
@@ -406,82 +467,203 @@
   }
 
   function renderAll() {
-    var live = VIEW.tasks.filter(function (t) { return STATE.dismissed.indexOf(t.id) < 0; });
+    // Interpreted state is authoritative; the live pull supplements it with
+    // anything that arrived since, routed on metadata alone.
+    var stateTasks = (DATA && DATA.tasks ? DATA.tasks : []).map(fromState);
+    var stateIds = {};
+    stateTasks.forEach(function (t) { stateIds[t.id] = true; });
+    var liveTasks = VIEW.tasks.map(fromLive).filter(function (t) { return !stateIds[t.id]; });
 
-    var decisions = live.filter(function (t) {
-      return t.routed.ceoRequired &&
-        (t.routed.ceoActionMode === 'DECIDE' || t.routed.ceoActionMode === 'APPROVE');
+    var all = stateTasks.concat(liveTasks)
+      .filter(function (t) { return STATE.dismissed.indexOf(t.id) < 0; });
+
+    // Group suspected duplicates under the record they match, so one incident
+    // reported twice reads as one item with two sources.
+    var byId = {};
+    all.forEach(function (t) { byId[t.id] = t; t.duplicates = []; });
+    var primary = [];
+    all.forEach(function (t) {
+      var parent = t.possibleDuplicateOf && byId[t.possibleDuplicateOf];
+      if (parent && parent !== t) parent.duplicates.push(t);
+      else primary.push(t);
     });
-    var decisionIds = decisions.map(function (t) { return t.id; });
 
-    var actions = live.filter(function (t) {
-      return t.routed.ceoRequired && decisionIds.indexOf(t.id) < 0;
+    var decisions = primary.filter(function (t) {
+      return t.ceoRequired && (t.mode === 'DECIDE' || t.mode === 'APPROVE');
+    });
+    var decisionIds = {};
+    decisions.forEach(function (t) { decisionIds[t.id] = true; });
+
+    var actions = primary.filter(function (t) { return t.ceoRequired && !decisionIds[t.id]; });
+    var actionIds = {};
+    actions.forEach(function (t) { actionIds[t.id] = true; });
+
+    // "Can take off your plate" means exactly that: work sitting with the CEO
+    // that someone else could carry. Work that was never his is not a
+    // delegation opportunity — it is awareness, and belongs elsewhere.
+    var ceoName = 'Adi';
+    // Already shown above as a decision or an action — showing it again as a
+    // delegation opportunity just makes the day look twice as full.
+    var delegate = primary.filter(function (t) {
+      if (decisionIds[t.id] || actionIds[t.id]) return false;
+      var owner = (STATE.corrections[t.id] && STATE.corrections[t.id].ownerName) || t.owner;
+      return owner === ceoName && t.leverage && t.leverage.indexOf('PAUL_CAN') === 0;
+    });
+    var delegateIds = {};
+    delegate.forEach(function (t) { delegateIds[t.id] = true; });
+
+    var moving = primary.filter(function (t) {
+      return !t.ceoRequired && !delegateIds[t.id] && !decisionIds[t.id] && !actionIds[t.id];
     });
 
-    var delegate = live.filter(function (t) {
-      var lc = t.routed.leverage.classification;
-      return !t.routed.ceoRequired && lc.indexOf('PAUL_CAN') === 0;
-    });
+    renderTasks('b-decisions', decisions);
+    renderTasks('b-actions', actions);
+    renderTasks('b-delegate', delegate);
+    renderTasks('b-moving', moving, { compact: true });
 
-    renderTasks('b-decisions', decisions, 'Nothing waiting on your judgment.');
-    renderTasks('b-actions', actions, 'Nothing needs you right now.');
-    renderTasks('b-delegate', delegate, 'Nothing to hand over.');
+    // If nothing at all needs the CEO, say so once rather than printing two
+    // empty headings.
+    var quiet = document.getElementById('quiet-note');
+    if (quiet) quiet.remove();
+    if (!decisions.length && !actions.length && !delegate.length && (DATA || VIEW.tasks.length)) {
+      var note = el('div', 'notice', '');
+      note.id = 'quiet-note';
+      note.setAttribute('data-kind', 'info');
+      note.appendChild(el('b', null, 'Nothing needs you today.'));
+      note.appendChild(document.createTextNode(
+        moving.length ? ' ' + moving.length + ' item' + (moving.length === 1 ? '' : 's') + ' moving without you.' : ''));
+      document.getElementById('notices').appendChild(note);
+    }
     renderFeed();
     renderMeetings();
-    renderWaiting(live);
+    renderWaiting();
     renderTeam();
+    renderProvenance();
   }
 
-  function renderTasks(blockId, tasks, emptyText) {
+  /** Say plainly how the shown state was produced, and when. */
+  function renderProvenance() {
+    var meta = document.getElementById('strip-meta');
+    if (!meta) return;
+    var bits = [];
+    if (DATA) {
+      var mode = DATA.producedBy === 'metadata-only'
+        ? 'metadata only'
+        : DATA.producedBy === 'session' ? 'interpreted' : 'interpreted (API)';
+      bits.push(mode + ' ' + relTime(DATA.generatedAt));
+      if (DATA.counts) bits.push(DATA.counts.mailKept + '/' + DATA.counts.mailSeen + ' mail kept');
+    }
+    if (STATE.lastSync) bits.push('live ' + relTime(STATE.lastSync));
+    meta.textContent = bits.length ? bits.join(' · ') : 'Not yet synced';
+  }
+
+  function renderTasks(blockId, tasks, opts) {
+    opts = opts || {};
+    var section = document.getElementById(blockId);
     var body = bodyOf(blockId);
     clear(body);
-    countOf(blockId).textContent = tasks.length ? String(tasks.length) : '';
-    if (!tasks.length) { body.appendChild(el('div', 'empty', emptyText)); return; }
+
+    // An empty section is omitted, never printed empty. "RISKS: none" trains
+    // the reader to skim, and a skimmed brief has failed.
+    if (!tasks.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    countOf(blockId).textContent = String(tasks.length);
+    if (opts.compact) {
+      var card = el('div', 'card');
+      tasks.slice(0, 12).forEach(function (t) { card.appendChild(compactRow(t)); });
+      body.appendChild(card);
+      return;
+    }
     tasks.slice(0, 12).forEach(function (t) { body.appendChild(taskCard(t)); });
   }
 
+  /** One line per item: enough to recognize it, not enough to invite reading. */
+  function compactRow(t) {
+    var row = el('div', 'wait-row');
+    var owner = (STATE.corrections[t.id] && STATE.corrections[t.id].ownerName) || t.owner || t.externalParty || '—';
+    row.appendChild(el('span', 'who', owner));
+    row.appendChild(el('span', 'what', t.title));
+    if (t.deadline) {
+      var d = el('span', 'days mono', fmtDate(t.deadline));
+      row.appendChild(d);
+    }
+    return row;
+  }
+
   function taskCard(t) {
-    var r = t.routed;
     var card = el('div', 'card');
 
     var top = el('div', 'card-top');
-    var mode = el('span', 'mode', (r.ceoActionMode || r.leverage.classification.replace(/^PAUL_CAN_/, '')).replace(/_/g, ' '));
-    mode.setAttribute('data-m', r.ceoActionMode || 'AWARE');
+    var modeLabel = t.mode || (t.leverage || '').replace(/^PAUL_CAN_/, '').replace(/_/g, ' ') || 'FYI';
+    var mode = el('span', 'mode', modeLabel.replace(/_/g, ' '));
+    mode.setAttribute('data-m', t.mode || 'AWARE');
     top.appendChild(mode);
     top.appendChild(el('h3', null, t.title));
-    var chip = el('span', 'chip', r.approvalClass);
-    chip.setAttribute('data-c', r.approvalClass);
+    if (t.score) {
+      var sc = el('span', 'score mono', String(Math.round(t.score)));
+      sc.title = 'Priority score';
+      top.appendChild(sc);
+    }
+    var chip = el('span', 'chip', t.approvalClass);
+    chip.setAttribute('data-c', t.approvalClass);
     top.appendChild(chip);
     card.appendChild(top);
 
-    if (t.preview) card.appendChild(el('p', 'why', t.preview));
+    if (t.summary) card.appendChild(el('p', 'why', t.summary));
 
-    var ownerId = effectiveOwner(t);
+    if (t.drivers && t.drivers.length) {
+      card.appendChild(el('p', 'next', 'Ranked here because ' + t.drivers[0] + '.'));
+    }
+
+    var ownerId = STATE.corrections[t.id] && STATE.corrections[t.id].ownerName;
+    var ownerName = ownerId || t.owner;
+
     var roles = el('div', 'roles');
-    roles.appendChild(rolePill('Owner', E.lookup.personName(ownerId) || '—'));
-    if (r.projectManagerPersonId && r.projectManagerPersonId !== ownerId) {
-      roles.appendChild(rolePill('Tracks', E.lookup.personName(r.projectManagerPersonId)));
-    }
-    if (r.decisionMakerPersonId && r.decisionMakerPersonId !== ownerId) {
-      roles.appendChild(rolePill('Decides', E.lookup.personName(r.decisionMakerPersonId)));
-    }
-    if (r.externalCounterpartyOrganizationId) {
-      roles.appendChild(rolePill('External', E.lookup.orgName(r.externalCounterpartyOrganizationId), true));
-    }
-    if (t.attributedTo && t.attributedTo !== E.lookup.personName(ownerId)) {
-      roles.appendChild(rolePill('Zoom said', t.attributedTo));
-    }
+    if (ownerName) roles.appendChild(rolePill('Owner', ownerName));
+    if (t.projectManager && t.projectManager !== ownerName) roles.appendChild(rolePill('Tracks', t.projectManager));
+    if (t.decisionMaker && t.decisionMaker !== ownerName) roles.appendChild(rolePill('Decides', t.decisionMaker));
+    if (t.externalParty) roles.appendChild(rolePill('External', t.externalParty, true));
+    if (t.attributedTo && t.attributionOverridden) roles.appendChild(rolePill('Source said', t.attributedTo));
+    if (t.deadline) roles.appendChild(rolePill('Due', fmtDate(t.deadline)));
+
     var src = el('span', 'role');
     src.appendChild(el('b', null, t.source));
     roles.appendChild(src);
+
+    if (!t.interpreted) {
+      var thin = el('span', 'role');
+      thin.title = 'Routed from subject and metadata only — no body was read';
+      thin.appendChild(document.createTextNode('metadata only'));
+      roles.appendChild(thin);
+    }
     card.appendChild(roles);
 
-    var det = el('details', 'reason');
-    det.appendChild(el('summary', null, 'Why this routing'));
-    det.appendChild(el('p', null, r.reason));
-    card.appendChild(det);
+    // A second report of the same incident, kept but folded in.
+    if (t.duplicates && t.duplicates.length) {
+      var dupBox = el('div', 'reason');
+      var dupText = t.duplicates.length === 1
+        ? 'Also reported once elsewhere'
+        : 'Also reported ' + t.duplicates.length + ' times elsewhere';
+      var dl = el('div', null, dupText + ' — kept as separate records pending your check.');
+      dl.style.fontSize = '12.5px';
+      dupBox.appendChild(dl);
+      t.duplicates.forEach(function (d) {
+        var line = el('div', null, '• ' + d.source + ': ' + d.title);
+        line.style.fontSize = '12px';
+        line.style.marginTop = '3px';
+        dupBox.appendChild(line);
+      });
+      card.appendChild(dupBox);
+    }
 
-    // Correction: the system is expected to be wrong and to be told so.
+    if (t.reason) {
+      var det = el('details', 'reason');
+      det.appendChild(el('summary', null, 'Why this routing'));
+      det.appendChild(el('p', null, t.reason));
+      card.appendChild(det);
+    }
+
     var fix = el('div', 'fix');
     fix.appendChild(el('label', null, 'Wrong owner?'));
     var sel = document.createElement('select');
@@ -491,12 +673,18 @@
     E.lookup.allPeople().forEach(function (p) {
       var o = document.createElement('option');
       o.value = p.id; o.textContent = p.name;
-      if (p.id === ownerId) o.selected = true;
+      if (p.name === ownerName) o.selected = true;
       sel.appendChild(o);
     });
     sel.addEventListener('change', function () {
       if (!sel.value) return;
-      STATE.corrections[t.id] = { owner: sel.value, at: new Date().toISOString(), was: r.primaryOwnerPersonId };
+      var person = E.lookup.person(sel.value);
+      STATE.corrections[t.id] = {
+        owner: sel.value,
+        ownerName: person ? person.name : sel.value,
+        was: t.owner,
+        at: new Date().toISOString()
+      };
       persist();
       renderAll();
     });
@@ -531,12 +719,19 @@
   function renderFeed() {
     var body = bodyOf('b-feed');
     clear(body);
-    if (!VIEW.feed.length) { body.appendChild(el('div', 'empty', 'Sync to load.')); return; }
-    var kept = VIEW.feed.filter(function (f) { return f.kept; }).length;
-    countOf('b-feed').textContent = kept + ' kept of ' + VIEW.feed.length;
+    var rows = (DATA && DATA.triage ? DATA.triage : []).slice();
+    VIEW.feed.forEach(function (f) {
+      if (!rows.some(function (r) { return r.subject === f.subject; })) {
+        rows.push({ subject: f.subject, kept: f.kept, reason: f.reason, at: f.at });
+      }
+    });
+    if (!rows.length) { document.getElementById('b-feed').style.display = 'none'; return; }
+
+    var kept = rows.filter(function (r) { return r.kept; }).length;
+    countOf('b-feed').textContent = kept + ' kept of ' + rows.length;
 
     var wrap = el('div', 'feed');
-    VIEW.feed.slice(0, 25).forEach(function (f) {
+    rows.slice(0, 30).forEach(function (f) {
       var row = el('div', 'feed-row ' + (f.kept ? 'kept' : 'filtered'));
       row.appendChild(el('span', 'verdict', f.kept ? 'KEPT' : 'DROPPED'));
       row.appendChild(el('span', 'subj', f.subject));
@@ -549,39 +744,76 @@
   function renderMeetings() {
     var body = bodyOf('b-meetings');
     clear(body);
-    if (!VIEW.meetings.length) { body.appendChild(el('div', 'empty', 'Sync to load.')); return; }
-    countOf('b-meetings').textContent = String(VIEW.meetings.length);
+    var list = (DATA && DATA.meetings ? DATA.meetings : []).map(function (m) {
+      return { topic: m.topic, at: m.at, items: m.actionItemCount, decisions: m.decisions || [] };
+    }).concat(VIEW.meetings.map(function (m) {
+      return { topic: m.topic, at: m.at, items: m.items, decisions: [], error: m.error };
+    }));
+
+    if (!list.length) { document.getElementById('b-meetings').style.display = 'none'; return; }
+    countOf('b-meetings').textContent = String(list.length);
+
     var card = el('div', 'card');
-    VIEW.meetings.forEach(function (m) {
+    list.slice(0, 6).forEach(function (m) {
       var row = el('div', 'meeting');
       var top = el('div', 'm-top');
       top.appendChild(el('span', 'm-date mono', fmtDate(m.at)));
       top.appendChild(el('span', 'm-topic', m.topic || 'Untitled'));
       row.appendChild(top);
       row.appendChild(el('div', 'm-items',
-        m.error ? 'Summary unavailable' :
-        m.items + (m.items === 1 ? ' action item' : ' action items') + ' routed'));
+        m.error ? 'Summary unavailable'
+                : m.items + (m.items === 1 ? ' action item' : ' action items')));
+      (m.decisions || []).slice(0, 2).forEach(function (d) {
+        var dd = el('div', 'm-items', '· ' + d);
+        dd.style.marginTop = '3px';
+        row.appendChild(dd);
+      });
       card.appendChild(row);
     });
     body.appendChild(card);
   }
 
-  function renderWaiting(live) {
+  /**
+   * Waiting-on comes from extracted commitments, which is the only honest
+   * source: it records what was actually promised, in which direction.
+   */
+  function renderWaiting() {
     var body = bodyOf('b-waiting');
     clear(body);
-    var ext = live.filter(function (t) { return t.routed.externalCounterpartyOrganizationId; });
-    if (!ext.length) { body.appendChild(el('div', 'empty', 'Nothing outstanding with outside parties.')); return; }
-    countOf('b-waiting').textContent = String(ext.length);
+    var list = (DATA && DATA.commitments ? DATA.commitments : []);
+    if (!list.length) { document.getElementById('b-waiting').style.display = 'none'; return; }
+    countOf('b-waiting').textContent = String(list.length);
+
     var card = el('div', 'card');
-    ext.slice(0, 8).forEach(function (t) {
-      var days = Math.max(0, Math.round((Date.now() - Date.parse(t.at)) / 86400000));
-      var row = el('div', 'wait-row');
-      var d = el('span', 'days mono', days + 'd');
-      if (days >= 4) d.setAttribute('data-late', '1');
-      row.appendChild(d);
-      row.appendChild(el('span', 'who', E.lookup.orgName(t.routed.externalCounterpartyOrganizationId)));
-      row.appendChild(el('span', 'what', t.title.slice(0, 60)));
-      card.appendChild(row);
+    ['they_owe', 'we_owe', 'internal'].forEach(function (dir) {
+      var group = list.filter(function (c) { return c.direction === dir; });
+      if (!group.length) return;
+      var head = el('div', 'wait-row');
+      var label = el('span', 'who', dir === 'they_owe' ? 'They owe us'
+                : dir === 'we_owe' ? 'We owe them' : 'Internal');
+      label.style.fontSize = '11px';
+      label.style.letterSpacing = '.06em';
+      label.style.textTransform = 'uppercase';
+      head.appendChild(label);
+      card.appendChild(head);
+
+      group.forEach(function (c) {
+        var row = el('div', 'wait-row');
+        var d = el('span', 'days mono', c.businessDaysOutstanding + 'd');
+        if (c.businessDaysOutstanding >= 4) d.setAttribute('data-late', '1');
+        row.appendChild(d);
+        row.appendChild(el('span', 'who', c.counterparty || c.owedBy || '—'));
+        row.appendChild(el('span', 'what', c.description));
+        card.appendChild(row);
+
+        if (c.followUpOwner) {
+          var note = el('div', 'm-items',
+            (c.explicit ? '' : 'Implied. ') + c.followUpOwner + ' chases; ' +
+            (c.relationshipOwner || 'the owner') + ' sends.');
+          note.style.paddingLeft = '2px';
+          card.appendChild(note);
+        }
+      });
     });
     body.appendChild(card);
   }
@@ -612,14 +844,13 @@
     return (d.getMonth() + 1) + '/' + d.getDate();
   }
 
+  /**
+   * No live connectors. The embedded state from the last sync is still the
+   * bulk of the value, so render it rather than blanking the page — live pull
+   * only adds what has arrived since.
+   */
   function showStatic() {
-    // No connectors: the engine still works, so show what the system knows.
-    renderTeam();
-    ['b-decisions', 'b-actions', 'b-delegate', 'b-feed', 'b-meetings', 'b-waiting'].forEach(function (id) {
-      var body = bodyOf(id);
-      clear(body);
-      body.appendChild(el('div', 'empty', 'Needs a live connector.'));
-    });
+    renderAll();
   }
 
   // ---------------------------------------------------------------------------
