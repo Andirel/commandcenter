@@ -145,12 +145,14 @@ hints:
   - name: paid_media_to_agency
     match:
       any_keyword: ["roas", "google ads", "bing", "amazon ads", "cpc", "ad spend", "campaign performance", "acos"]
+    required_capabilities: [paid_media]
     external_organization_capability: paid_media
     reason: "Paid-media investigation is owned by the external agency partner."
 
   - name: podcast_opportunity
     match:
       any_keyword: ["podcast", "episode sponsorship", "host read", "rate card", "podcast placement"]
+    required_capabilities: [podcast_advertising]
     external_organization_capability: podcast_sourcing
     decision_required: true
     reason: "Podcast sourcing sits with the media partner; the spend decision sits with the CEO."

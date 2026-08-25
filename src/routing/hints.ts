@@ -83,7 +83,11 @@ export function resolveCapabilities(
     for (const cap of hint.required_capabilities) if (known.has(cap)) out.add(cap);
   }
 
-  if (out.size === 0 && req.businessArea) {
+  // Business area is the WEAKEST signal and is only a fallback. In particular,
+  // it is not consulted when a hint already matched: a hint is a specific
+  // statement about what this work needs, and layering "everything in
+  // marketing" on top of it drags in unrelated specialists as collaborators.
+  if (out.size === 0 && hints.length === 0 && req.businessArea) {
     const area = config.businessAreas.business_areas[req.businessArea];
     for (const cap of area?.default_capabilities ?? []) if (known.has(cap)) out.add(cap);
   }
