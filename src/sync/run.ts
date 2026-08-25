@@ -107,8 +107,28 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
         body: (event.body ?? event.summary ?? '').slice(0, 6000),
       });
 
-      if (r.ok) interpretation = r.value;
-      else problems.push({ stage: 'interpretation', detail: r.error });
+      if (r.ok) {
+        interpretation = r.value;
+      } else {
+        /*
+         * Interpretation was ATTEMPTED and FAILED. That is different from a run
+         * that deliberately never interprets, and must not quietly degrade into
+         * one: the resulting task would be indistinguishable from a considered
+         * metadata-only result while actually resting on a subject line the
+         * model could not make sense of. Hold it for review instead.
+         */
+        problems.push({ stage: 'interpretation', detail: r.error });
+        needsReview++;
+        if (isMail) {
+          triageRows.push({
+            subject: event.subject ?? '(no subject)',
+            kept: false,
+            reason: 'interpretation failed — held for review',
+            at: event.occurredAt,
+          });
+        }
+        continue;
+      }
     }
 
     // Interpretation may decide this changes nothing. That is a real answer.

@@ -10,6 +10,23 @@ be corrected with a commit rather than by editing a trigger.
 
 ---
 
+## Prerequisite: the Routine needs connectors attached
+
+**A scheduled session does not inherit connectors from the session that created
+the Routine.** This was verified by test-firing: the fired session ran with no
+`mcp__*` tools at all and correctly stopped without publishing.
+
+Passing connectors programmatically is not available for this organization
+(`create_trigger` rejects the `connectors` parameter), so they must be attached
+**from the claude.ai Routines UI**: open the Routine, add Outlook (ms365), Slack
+and Zoom, then enable it.
+
+Until that is done the Routine stays disabled. A daily job that cannot read
+anything is worse than no job — it produces a notification every morning that
+means nothing, which is exactly the noise this system exists to remove.
+
+---
+
 ## Hard rules
 
 1. **Send nothing.** Every connector call is a read. Never
