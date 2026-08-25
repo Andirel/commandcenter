@@ -20,7 +20,7 @@
  * API performs them instead. With neither, the run is metadata-only and every
  * task is marked `interpreted: false` so the UI can say so plainly.
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { loadConfig, REPO_ROOT } from '../src/config/load.js';
 import { teamModelFromConfig } from '../src/capabilities/graph.js';
@@ -28,6 +28,8 @@ import { CanonicalEvent } from '../src/schemas/events.js';
 import { SessionClient, defaultClient } from '../src/ai/client.js';
 import type { StageContext, InterpretationRecord } from '../src/ai/stages.js';
 import { runSync } from '../src/sync/run.js';
+import { Ledger } from '../src/ledger/types.js';
+import { applyViewerAnswers } from '../src/ledger/reconcile.js';
 import { StateCommitment, StateMeeting, StateSignal, StateFinance, StateProposal } from '../src/sync/state.js';
 import { readPnl, financeSignals, latestClosedIndex, type PnlNode } from '../src/signals/finance.js';
 import { parseSalesRows, salesTrend, commerceSignals } from '../src/signals/commerce.js';
@@ -35,9 +37,15 @@ import { parseTrafficRows, trafficTrend, trafficSignals } from '../src/signals/t
 import { parseFlowReport, summarizeEmail, emailSignals } from '../src/signals/email.js';
 
 const args = process.argv.slice(2);
-const pullPath = args.find((a) => !a.startsWith('--'));
+/** Flags that take a value, so the positional pull path is not confused for one. */
+const VALUED = new Set(['--out', '--ledger', '--now']);
+const pullPath = args.find((a, i) => !a.startsWith('--') && !VALUED.has(args[i - 1] ?? ''));
 const outIdx = args.indexOf('--out');
 const outPath = resolve(outIdx >= 0 ? args[outIdx + 1]! : join(REPO_ROOT, 'dist', 'state.json'));
+const ledgerIdx = args.indexOf('--ledger');
+const ledgerPath = resolve(ledgerIdx >= 0 ? args[ledgerIdx + 1]! : join(REPO_ROOT, 'dist', 'ledger.json'));
+/** Start over deliberately, rather than by forgetting where the file was. */
+const fresh = args.includes('--fresh');
 
 if (!pullPath) {
   console.error('usage: npx tsx scripts/sync.ts <pull-file.json> [--out <path>]');
@@ -68,7 +76,10 @@ const proposals = (pull.proposals ?? []).map((p) => StateProposal.parse(p));
 
 // Derive financial and commerce signals from the raw payloads, so the same code
 // runs here and in the browser rather than two drifting implementations.
-const now = new Date();
+// `--now` exists for rehearsing a sequence of days against real data; without
+// it the run is anchored to the actual clock.
+const nowIdx = args.indexOf('--now');
+const now = nowIdx >= 0 ? new Date(args[nowIdx + 1]!) : new Date();
 let signals: StateSignal[] = [];
 let finance: StateFinance = null;
 // Kept from the raw signal rather than read back off the parsed state shape,
@@ -172,14 +183,57 @@ if (pull.interpretations && Object.keys(pull.interpretations).length) {
   if (api) ai = { client: api, config, log };
 }
 
-const { state, interpretations } = await runSync({
-  events, meetings, commitments, signals, finance, proposals, config, team,
+/*
+ * Memory. Absent on the first run, which is the honest case: everything is
+ * new, nothing can have been completed, and the page says "first sync" rather
+ * than presenting fourteen items as fourteen changes.
+ */
+let priorLedger: Ledger | undefined;
+if (!fresh && existsSync(ledgerPath)) {
+  try {
+    priorLedger = Ledger.parse(JSON.parse(readFileSync(ledgerPath, 'utf8')));
+  } catch (err) {
+    // A corrupt ledger must not take the morning down, but losing memory is
+    // not a silent event either.
+    console.error(`! ledger at ${ledgerPath} unreadable (${(err as Error).message}); starting fresh`);
+  }
+}
+
+/*
+ * Answers given in the page, folded in before the run.
+ *
+ * Corrections made by hand are the only channel through which the system
+ * learns it was wrong. Rebuilding without reading them would ask the same
+ * question every morning and quietly discard every answer.
+ */
+const viewerPath = join(REPO_ROOT, 'dist', 'viewer-state.json');
+if (priorLedger && existsSync(viewerPath)) {
+  try {
+    const viewer = JSON.parse(readFileSync(viewerPath, 'utf8')) as {
+      completed?: Record<string, { at?: string; by?: string }>;
+      stillOpen?: Record<string, string>;
+    };
+    const applied = applyViewerAnswers(priorLedger, viewer, now.toISOString());
+    priorLedger = applied.ledger;
+    if (applied.confirmed || applied.reopened) {
+      console.log(`  answers folded in  ${applied.confirmed} confirmed, ${applied.reopened} said still live`);
+    }
+  } catch (err) {
+    console.error(`! viewer state unreadable (${(err as Error).message}); answers not applied`);
+  }
+}
+
+const { state, interpretations, ledger } = await runSync({
+  events, meetings, commitments, signals, finance, proposals, config, team, now,
   ...(ai ? { ai } : {}),
   ...(pull.window ? { window: pull.window } : {}),
+  ...(priorLedger ? { ledger: priorLedger } : {}),
 });
 
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, JSON.stringify(state, null, 2), 'utf8');
+mkdirSync(dirname(ledgerPath), { recursive: true });
+writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2), 'utf8');
 
 const c = state.counts;
 console.log(`✓ ${outPath}`);
@@ -190,6 +244,8 @@ console.log(`  meetings         ${c.meetingsSeen}`);
 console.log(`  tasks created    ${c.tasksCreated}`);
 console.log(`  duplicates       ${c.duplicatesMerged}`);
 console.log(`  needs review     ${c.needsReview}`);
+console.log(`  carried forward  ${c.carriedForward}`);
+console.log(`  completed        ${c.completedThisRun}`);
 console.log(`  commitments      ${state.commitments.length}`);
 console.log(`  signals          ${state.signals.length}`);
 console.log(`  proposals        ${state.proposals.length}`);
@@ -199,6 +255,25 @@ if (state.finance?.closed) {
 }
 if (state.finance?.open) {
   console.log(`  open month       ${state.finance.open.period} (${state.finance.open.daysElapsed}d in, closes ${state.finance.open.closesOn}) — revenue only`);
+}
+if (state.delta) {
+  const d = state.delta;
+  console.log(`\n  since ${d.since ?? 'the first sync'} (sync #${d.syncCount + 1}):`);
+  console.log(`    new              ${d.added.length}`);
+  console.log(`    completed        ${d.completed.length}`);
+  console.log(`    awaiting confirm ${d.awaitingConfirmation.length}`);
+  console.log(`    moved            ${d.moved.length}`);
+  console.log(`    gone quiet       ${d.quiet.length}`);
+  for (const x of d.completed) console.log(`      \u2713 ${x.title.slice(0, 58)}  \u2014 ${x.label}`);
+  for (const x of d.awaitingConfirmation) console.log(`      ? ${x.title.slice(0, 58)}  \u2014 ${x.reason}`);
+} else {
+  console.log(`\n  first sync \u2014 no delta to report`);
+}
+if (state.followUps.length) {
+  console.log(`\n  follow-ups due:`);
+  for (const f of state.followUps) {
+    console.log(`    ${String(f.businessDaysOverdue).padStart(3)}d  #${f.attempt}  ${(f.followUpOwner ?? '\u2014').padEnd(10)} ${f.description.slice(0, 54)}`);
+  }
 }
 if (interpretations.length) {
   const bad = interpretations.filter((r) => !r.validationOk).length;

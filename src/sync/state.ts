@@ -57,6 +57,22 @@ export const StateTask = z.object({
   duplicateSimilarity: z.number().nullable().default(null),
   /** True when a model interpreted the body; false when routed on metadata only. */
   interpreted: z.boolean().default(false),
+
+  /*
+   * Ledger facts. Absent on a run with no ledger, which is why they default
+   * rather than being required: the sync must still work the first time it is
+   * ever run, before any memory exists.
+   */
+  /** open while it is live work; dormant once it has gone quiet for long enough. */
+  status: z.enum(['open', 'dormant']).default('open'),
+  /** Days since this task was first seen. Age is not urgency, but it is evidence. */
+  ageDays: z.number().int().nullable().default(null),
+  /** Days since the newest piece of evidence. A high number wants an explanation. */
+  daysSilent: z.number().int().nullable().default(null),
+  /** First appeared in this sync. */
+  isNew: z.boolean().default(false),
+  /** Number of syncs that have seen it — high with no movement is a smell. */
+  seenCount: z.number().int().default(1),
 });
 export type StateTask = z.infer<typeof StateTask>;
 
@@ -195,6 +211,71 @@ export const StateProposal = z.object({
 });
 export type StateProposal = z.infer<typeof StateProposal>;
 
+/**
+ * What changed since the previous sync.
+ *
+ * A snapshot answers "what is true"; a delta answers "what should I look at",
+ * and the second question is the one someone opening a tool every morning
+ * actually has. Everything here is computed against the ledger, so it exists
+ * only from the second sync onward — `since` is null on the first run and the
+ * UI says so rather than implying nothing happened.
+ */
+export const StateDelta = z.object({
+  since: z.string().nullable().default(null),
+  syncCount: z.number().int().default(0),
+  added: z.array(z.object({ id: z.string(), title: z.string(), rank: z.number().int().nullable() })).default([]),
+  /** Closed on inference, with the evidence that closed it. */
+  completed: z.array(z.object({
+    id: z.string(), title: z.string(),
+    evidence: z.string(), label: z.string(), confidence: z.number(),
+  })).default([]),
+  /**
+   * Evidence looks conclusive but the item is too consequential to close on
+   * inference. Shown as a question, never applied silently.
+   */
+  awaitingConfirmation: z.array(z.object({
+    id: z.string(), title: z.string(),
+    evidence: z.string(), label: z.string(), confidence: z.number(), reason: z.string(),
+  })).default([]),
+  /** Meaningful rank movement only; a shuffle of one place is noise. */
+  moved: z.array(z.object({
+    id: z.string(), title: z.string(),
+    fromRank: z.number().int().nullable(), toRank: z.number().int().nullable(),
+  })).default([]),
+  /** Gone quiet long enough to need a decision about whether it is still live. */
+  quiet: z.array(z.object({ id: z.string(), title: z.string(), daysSilent: z.number().int() })).default([]),
+  /** Closed, then evidence arrived that post-dates the close. */
+  reopened: z.array(z.object({ id: z.string(), title: z.string() })).default([]),
+});
+export type StateDelta = z.infer<typeof StateDelta>;
+
+/**
+ * A commitment somebody owes us that is now overdue for a nudge.
+ *
+ * Note the shape of the output: a draft is READY, addressed to whoever does
+ * the chasing. The system never sends in another person's name, and the CEO's
+ * relationships are chased by the CEO — the engine's job is to make sure the
+ * moment does not pass unnoticed, not to answer for him.
+ */
+export const StateFollowUp = z.object({
+  id: z.string(),
+  description: z.string(),
+  counterparty: z.string().nullable().default(null),
+  owedBy: z.string().nullable().default(null),
+  dueDate: z.string().nullable().default(null),
+  businessDaysOverdue: z.number().int(),
+  /** 1 = first nudge, 2 = second, 3+ = escalation. */
+  attempt: z.number().int().default(1),
+  followUpOwner: z.string().nullable().default(null),
+  relationshipOwner: z.string().nullable().default(null),
+  escalateToCeo: z.boolean().default(false),
+  party: z.enum(['internal', 'external']).default('external'),
+  /** Rendered from followup-rules.yaml, for the person who does the chasing. */
+  notification: z.string().default(''),
+  quote: z.string().nullable().default(null),
+});
+export type StateFollowUp = z.infer<typeof StateFollowUp>;
+
 export const CommandCenterState = z.object({
   version: z.literal(1),
   generatedAt: z.string(),
@@ -209,6 +290,9 @@ export const CommandCenterState = z.object({
   signals: z.array(StateSignal).default([]),
   proposals: z.array(StateProposal).default([]),
   finance: StateFinance.default(null),
+  /** Null until a second sync exists to compare against. */
+  delta: StateDelta.nullable().default(null),
+  followUps: z.array(StateFollowUp).default([]),
 
   counts: z.object({
     mailSeen: z.number().int().default(0),
@@ -218,6 +302,9 @@ export const CommandCenterState = z.object({
     tasksCreated: z.number().int().default(0),
     duplicatesMerged: z.number().int().default(0),
     needsReview: z.number().int().default(0),
+    /** Carried over from the ledger rather than rebuilt from this window. */
+    carriedForward: z.number().int().default(0),
+    completedThisRun: z.number().int().default(0),
   }).default({}),
 
   /** Populated when a stage failed; the UI says so rather than pretending. */

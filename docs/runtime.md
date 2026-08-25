@@ -118,11 +118,21 @@ retailer onboarding portals, once the routing on those tasks is trusted.
 
 ## What to build next, in order
 
-1. **Interpretation.** Routing on subject lines is the biggest quality gap.
-2. **Commitment extraction from Sent Items.** The waiting-on register is the
-   highest-value thing the page cannot yet populate honestly.
-3. **Supabase**, when the working set outgrows the page.
-4. **n8n**, only for the unattended morning brief.
+1. **Commitment extraction from Sent Items.** The follow-up engine now runs and
+   remembers, but it can only chase commitments something else found. Reading
+   what we ourselves promised is the biggest remaining source.
+2. **Inventory and days of cover from Shopify.** The one number missing that
+   can cost money within the hour — conversion is a slow dial, but stocking out
+   of a SKU while paying for traffic to it is an emergency.
+3. **Blended CAC on closed months.** Finaloop knows the spend and Shopify knows
+   the new customers; nothing yet divides one by the other. Blended only —
+   per-channel would need attribution these two connectors cannot honestly
+   support.
+4. **Supabase**, when the ledger outgrows a JSON file on disk.
+
+The ledger lives at `dist/ledger.json`, which is gitignored: it holds real
+company correspondence, like `dist/state.json`. Losing it loses the memory, not
+the system — the next run starts over as a first sync and says so.
 
 
 ---
@@ -205,6 +215,16 @@ makes it longer; separating concerns makes each one answerable at a glance.
 
 ### Today — the ordered plan
 
+Above the plan sits one compact strip: **what changed since you last looked**.
+A snapshot answers "what is true"; someone opening this every morning is asking
+something narrower — "what do I need to look at that I have not already looked
+at". Only a delta answers that, and only a system with memory can compute one,
+which is why the strip says "first sync" rather than presenting everything as
+news. Rank movement is reported only when it is real: a one-place shuffle
+happens every run from ordinary score drift, and reporting it teaches the
+reader that the strip is noise, which is the one thing a delta cannot afford.
+
+
 A ranked list answers *what matters most*. It does not answer *what should I do
 first*, and the two differ for one reason that dominates the rest:
 
@@ -227,6 +247,82 @@ Two further rules:
 The plan is budgeted against the hours actually left. A plan needing nine hours
 at 15:00 is not a plan, and saying otherwise is how a daily tool stops being
 opened.
+
+### The ledger — the only part of the system with memory
+
+Everything else in the loop is a pure function of a window: give it seven days
+of mail and it produces a queue. Run it again tomorrow and it produces another
+one, with no idea it has ever run before. Two consequences follow, both fatal
+to something opened every morning:
+
+- **Nothing can ever be finished.** A task completed yesterday is rebuilt from
+  the same email today. The queue only grows, and within a few weeks it is
+  ordering a list that is mostly archaeology.
+- **Nothing can be compared.** *"Three new, one slipped, this has been waiting
+  on Ira for nine days"* is worth more than any snapshot, and it is not
+  computable from one run.
+
+`src/ledger/` stores what survives a run — identity, status, and the rank each
+item carried out of the previous sync. The queue is now the ledger, not the
+window, which is also why an approaching deadline finally lifts a task that
+arrived nine days ago: carried-forward work is re-scored against today's clock.
+
+**Identity reuses `matchTask` rather than inventing a second notion of
+sameness.** Two matchers would drift, and the day they disagree is the day a
+task exists twice with neither copy complete.
+
+**Completion is inferred, never assumed.** The asymmetry decides every rule:
+a task wrongly left open is visible and costs a moment to dismiss; a task
+wrongly closed disappears along with whatever it was worth. So inference closes
+only what it is confident about *and* cheap to be wrong about. Anything
+consequential — RED class, high impact, an approval the CEO owes — becomes a
+question with the evidence quoted, answerable in one click.
+
+Three things real data taught this code, each now a test:
+
+- **A message cannot finish the work it asked for.** Windows overlap between
+  runs, so Monday's request is read again on Tuesday. Without a guard, a
+  request containing any completion-shaped phrase closes the task it opened,
+  one day after opening it.
+- **A status list is not a completion.** *"TikTok - done. Amazon - waiting for
+  image processing"* closed an entire multi-marketplace task on the one line
+  that happened to be finished. Any unfinished marker in a message now settles
+  it: that is an update, not a completion.
+- **A question about which option we want** is a decision still outstanding,
+  however confident the rest of the message sounds.
+
+**Silence never closes anything.** Work that stops appearing has usually either
+been finished without anyone saying so or quietly died, and those need
+different answers from the person who knows which. After fifteen business days
+it moves out of the daily plan into a group that is asked about **once** — a
+daily "is this still live?" is the same nagging in slower form. The list is
+capped at six; thirty buttons on one page is that nagging all at once.
+
+**Answers given by hand are the most valuable records the system holds.**
+Everything else it knows is inference over evidence it happened to see; a
+confirmation is the one channel where someone who actually knows tells it
+whether it was right. They are folded into the ledger before the next run, so a
+question already answered is never asked again. "Still open" resets the silence
+clock exactly as a message would — a person saying so is the strongest evidence
+of life available.
+
+### Chasing what we are owed
+
+`findDueFollowUps` existed from the first phase and had never run, because it
+needs something a window cannot supply: how many times we have already chased,
+and when. Rebuilt each morning, every commitment looks un-chased, so the engine
+fires the first nudge daily — which is how a chasing tool becomes a nagging one
+and gets switched off in week two. The ledger holds the counters.
+
+Memory also made a whole class of promise chaseable for the first time. **Most
+real commitments carry no date.** *"I will look into these hosts and follow
+up"* is the ordinary shape of one, and measured only against a due date it has
+none — so precisely the promises nobody wrote down anywhere else were the ones
+never chased. With no date, the clock now starts when we first heard it.
+
+Every row says what the counterparty actually said, in their words, and names
+who chases and who sends. The output is a **draft that is ready**, never a sent
+message: the system contributes the noticing, which is the part that fails.
 
 ### Numbers — the funnel and the money
 

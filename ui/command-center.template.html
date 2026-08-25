@@ -116,6 +116,43 @@ header.top {
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.tiny { padding: 3px 8px; font-size: 12px; }
 
+/* --- the delta: what changed since the last sync ---------------------------
+   Deliberately compact. This is orientation, not content: it earns two
+   seconds at the top of the page, and anything longer would push the actual
+   plan below the fold. */
+.deltas { display: flex; flex-wrap: wrap; gap: 8px; }
+.dchip {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface);
+  font-size: 12.5px; line-height: 1;
+}
+.dchip b { font: 600 14px/1 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.dchip[data-k="completed"] { border-color: var(--ok); background: var(--ok-soft); }
+.dchip[data-k="added"]     { border-color: var(--accent); background: var(--accent-soft); }
+.dchip[data-k="quiet"]     { opacity: .72; }
+.dlist { margin-top: 12px; display: grid; gap: 6px; }
+.dline { display: flex; gap: 9px; align-items: baseline; font-size: 13px; }
+.dline .mark { font: 600 12px/1.4 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; width: 15px; flex: none; opacity: .8; }
+.dline .txt { flex: 1; min-width: 0; }
+.dline .sub { color: var(--ink-3); font-size: 12px; }
+.dline[data-k="completed"] .mark { color: var(--ok); }
+.dline .move { font: 500 11.5px/1.4 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-3); white-space: nowrap; }
+
+/* --- confirmations: a question, never an assumption ----------------------- */
+.confirm { border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 15px; background: var(--surface); }
+.confirm + .confirm { margin-top: 9px; }
+.confirm .q { font-weight: 600; font-size: 14px; }
+/* Quoted evidence. Standalone rather than scoped to .confirm: the same
+   treatment carries a commitment's own words in the chase list. */
+.ev {
+  padding: 8px 11px; border-left: 2px solid var(--accent);
+  background: var(--surface-2); border-radius: 0 6px 6px 0;
+  font: 400 12.5px/1.55 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-3);
+}
+.confirm .ev { margin-top: 7px; }
+.confirm .why { margin-top: 7px; font-size: 12px; color: var(--ink-3); }
+
 /* --- connector status strip ----------------------------------------------- */
 .strip {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
@@ -238,6 +275,17 @@ select {
 .meeting .m-date { font-size: 11.5px; color: var(--ink-3); flex: none; }
 .meeting .m-topic { font-size: 13.5px; font-weight: 600; flex: 1; min-width: 0; }
 .meeting .m-items { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+
+/* Secondary line under a row: who chases, who sends, what was promised.
+   Muted deliberately — it is context for the row above, not another row. */
+.subline { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+
+/* One answerable item: the row, its context, and its two buttons read as a
+   single block rather than the buttons drifting toward the row below. */
+.qitem { padding: 4px 0 10px; border-bottom: 1px solid var(--line-soft); }
+.qitem:last-child { border-bottom: 0; padding-bottom: 2px; }
+.qitem .wait-row { border-bottom: 0; padding-bottom: 2px; }
+.qitem .fix { margin-top: 7px; }
 
 /* --- views ----------------------------------------------------------------- */
 .views { display: flex; gap: 2px; margin: 0 0 20px; border-bottom: 1px solid var(--line); }
@@ -411,12 +459,27 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: 12px; backgrou
   <div id="notices"></div>
 
   <div class="pane" id="pane-today">
+    <section class="block" id="b-changed">
+      <div class="block-head"><h2>Since you last looked</h2><span class="count"></span>
+        <span class="note"></span></div>
+      <div class="body"></div>
+    </section>
     <section class="block" id="b-plan">
       <div class="block-head">
         <h2>In order, by end of day</h2><span class="count"></span>
         <span class="note"></span>
       </div>
       <div class="body"><div class="empty">Sync to load.</div></div>
+    </section>
+    <section class="block" id="b-chase">
+      <div class="block-head"><h2>Owed to us</h2><span class="count"></span>
+        <span class="note">Past the cadence, draft ready</span></div>
+      <div class="body"></div>
+    </section>
+    <section class="block" id="b-confirm">
+      <div class="block-head"><h2>Did these get done?</h2><span class="count"></span>
+        <span class="note">Evidence looks conclusive, the item is too big to assume</span></div>
+      <div class="body"></div>
     </section>
     <section class="block" id="b-later">
       <div class="block-head"><h2>Not today</h2><span class="count"></span>
@@ -496,7 +559,12 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: 12px; backgrou
         <div class="body"><div class="empty">Sync to load.</div></div>
       </section>
 
-      <section class="block" id="b-feed">
+      <section class="block" id="b-quiet">
+      <div class="block-head"><h2>Gone quiet</h2><span class="count"></span>
+        <span class="note">No evidence for a while — still live?</span></div>
+      <div class="body"></div>
+    </section>
+    <section class="block" id="b-feed">
         <div class="block-head">
           <h2>Inbox triage</h2><span class="count"></span>
           <span class="note">What the filter kept and dropped</span>

@@ -39,6 +39,16 @@ export interface FollowUpContext {
   taskProjectManagers?: Map<string, string | null>;
   taskPrimaryOwners?: Map<string, string | null>;
   ceoPersonId?: string | null;
+  /**
+   * When each commitment was first observed, by id.
+   *
+   * Most real commitments carry no date. "I will look into these hosts and
+   * follow up" is the ordinary shape of a promise, and measuring only from a
+   * due date meant those were never chased at all -- precisely the ones most
+   * likely to be forgotten, since nobody wrote them down anywhere else. When
+   * there is no due date, the clock starts when we first heard it.
+   */
+  observedSince?: Map<string, string>;
 }
 
 /**
@@ -85,9 +95,11 @@ export function findDueFollowUps(
 
     // Measure from the last nudge if there was one, otherwise from the due
     // date -- otherwise a single overdue item fires every single day.
+    const observed = commitment.id ? ctx.observedSince?.get(commitment.id) ?? null : null;
     const since = commitment.lastFollowedUpAt
       ? new Date(commitment.lastFollowedUpAt)
-      : commitment.dueDate ? new Date(commitment.dueDate) : null;
+      : commitment.dueDate ? new Date(commitment.dueDate)
+      : observed ? new Date(observed) : null;
     if (!since) continue;
 
     const elapsed = businessDaysBetween(since, now);
@@ -102,6 +114,8 @@ export function findDueFollowUps(
 
     const followUpOwnerPersonId = resolveFollowUpOwner(commitment, ctx);
     const relationshipOwnerPersonId = resolveRelationshipOwner(commitment, ctx);
+    // With no due date there is nothing to be late against; the honest figure
+    // is how long it has been outstanding, which is what `elapsed` measures.
     const overdue = commitment.dueDate ? businessDaysBetween(new Date(commitment.dueDate), now) : elapsed;
 
     out.push({
@@ -112,7 +126,9 @@ export function findDueFollowUps(
       relationshipOwnerPersonId,
       escalateToCeo: shouldEscalate(commitment, overdue, ctx),
       party,
-      reason: `${overdue} business ${overdue === 1 ? 'day' : 'days'} outstanding.`,
+      reason: commitment.dueDate
+        ? `${overdue} business ${overdue === 1 ? 'day' : 'days'} past the date they gave.`
+        : `${overdue} business ${overdue === 1 ? 'day' : 'days'} outstanding, with no date ever given.`,
     });
   }
 

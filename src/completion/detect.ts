@@ -31,16 +31,41 @@ const COMPLETION_PATTERNS: Array<{ re: RegExp; confidence: number; label: string
   { re: /\ball set\b|\bgood to go\b|\btaken care of\b|\bhandled\b/i, confidence: 0.65, label: 'informal completion' },
 ];
 
-/** Phrases that specifically DENY completion. Checked first — "not done yet"
- *  contains "done", and matching that as completion would close live work. */
+/**
+ * Markers that the work is NOT finished. Checked first, and decisive.
+ *
+ * Two distinct jobs, which is why the list is broader than simple negation:
+ *
+ *   1. Outright denial — "not done yet" contains "done", and reading that as
+ *      completion would close live work.
+ *   2. Progress, which is the far more common trap. Real status messages read
+ *      like "TikTok - done. Amazon - waiting for image processing", and the
+ *      naive reading closes an entire multi-marketplace task on the strength
+ *      of the one line that happens to be finished. A message that reports
+ *      both finished and unfinished parts is an update, not a completion, and
+ *      the presence of ANY unfinished marker settles it.
+ *
+ * Questions are included for the same reason: someone asking which of two
+ * options we want is reporting that a decision is still outstanding, however
+ * confidently the rest of the message reads.
+ */
 const NEGATION_PATTERNS = [
   /\bnot (?:yet |quite )?(?:done|completed|finished|sent|paid|ready|confirmed)\b/i,
-  /\b(?:still|haven'?t|hasn'?t|have not|has not) (?:working|waiting|been|yet)\b/i,
+  /\b(?:still|haven'?t|hasn'?t|have not|has not) (?:working|waiting|been|yet|need)\b/i,
   /\bwill be (?:done|sent|paid|completed|ready)\b/i,
   /\bonce (?:it'?s|this is|that'?s) (?:done|complete|ready)\b/i,
   /\bbefore (?:we|i|you) (?:send|pay|submit|finish)\b/i,
   /\bneed(?:s)? to be (?:done|sent|paid|completed)\b/i,
   /\bcan you\b|\bcould you\b|\bplease (?:send|pay|submit|confirm)\b/i,
+  // Work still in flight.
+  /\bwaiting (?:for|on)\b/i,
+  /\b(?:is |are |still )?pending\b/i,
+  /\bin progress\b/i,
+  /\bstill (?:to|needs?|working)\b/i,
+  /\bnext step\b/i,
+  // A question about what to do is a decision still outstanding.
+  /\b(?:do|would|should) you (?:want|prefer|like)\b/i,
+  /\bare we (?:going to|still)\b/i,
 ];
 
 export interface CompletionSignal {
@@ -73,9 +98,20 @@ export function detectCompletion(
   candidates: Task[],
   opts: CompletionOptions = {},
 ): CompletionSignal[] {
+  /*
+   * A message cannot finish the work it asked for.
+   *
+   * The sync window overlaps between runs, so the message that created a task
+   * on Monday is read again on Tuesday. Without this, a request containing any
+   * completion-shaped phrase closes the very task it opened — silently, and
+   * one day after the task appeared.
+   */
+  const selfId = event.sourceExternalId;
   const text = `${event.subject ?? ''} ${event.body ?? ''} ${event.summary ?? ''}`.trim();
   if (!text) return [];
 
+  // Decisive, and checked before any completion phrase: a message reporting
+  // unfinished work does not close a task no matter what else it says.
   if (NEGATION_PATTERNS.some((re) => re.test(text))) return [];
 
   const matched = COMPLETION_PATTERNS.find((p) => p.re.test(text));
@@ -85,6 +121,7 @@ export function detectCompletion(
 
   for (const task of candidates) {
     if (task.status === 'completed' || task.status === 'cancelled' || task.status === 'superseded') continue;
+    if (selfId && (task.id === selfId || task.sourceEventId === selfId)) continue;
 
     // Topical overlap guards against closing the wrong task.
     const overlap = tokenSimilarity(text, `${task.title} ${task.description ?? ''}`);

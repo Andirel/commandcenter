@@ -29,7 +29,15 @@ import { RoutingRequest } from '../schemas/routing.js';
 import { Task as TaskSchema } from '../schemas/tasks.js';
 import type { StageContext, InterpretationRecord } from '../ai/stages.js';
 import { interpretEvent, triage, teamContext, capabilityContext } from '../ai/stages.js';
-import { CommandCenterState, StateTask, type StateCommitment, type StateMeeting, type StateSignal, type StateFinance, type StateProposal } from './state.js';
+import { canAutoComplete, detectCompletion, type CompletionSignal } from '../completion/detect.js';
+import { emptyLedger, openEntries, type Ledger, type LedgerEntry } from '../ledger/types.js';
+import {
+  applyCompletion, carryForward, completionOptions, computeDelta, daysBetween,
+  markDormant, matchToLedger, newEntry, refresh, stampRanks,
+} from '../ledger/reconcile.js';
+import { businessDaysBetween } from '../followup/engine.js';
+import { resolveFollowUps } from './followups.js';
+import { CommandCenterState, StateTask, type StateCommitment, type StateDelta, type StateMeeting, type StateSignal, type StateFinance, type StateProposal } from './state.js';
 
 export interface SyncInput {
   events: CanonicalEvent[];
@@ -45,11 +53,18 @@ export interface SyncInput {
   ai?: StageContext;
   now?: Date;
   window?: { from: string; to: string };
+  /**
+   * The system's memory. Omit on a first run: everything is new, nothing can
+   * be completed, and the delta is null rather than a fabricated "all new".
+   */
+  ledger?: Ledger;
 }
 
 export interface SyncOutput {
   state: CommandCenterState;
   interpretations: InterpretationRecord[];
+  /** The ledger as it stands after this run. Persist it or lose the memory. */
+  ledger: Ledger;
 }
 
 export async function runSync(input: SyncInput): Promise<SyncOutput> {
@@ -63,6 +78,28 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
   const accepted: Task[] = [];
 
   let mailSeen = 0, mailKept = 0, duplicates = 0, needsReview = 0;
+
+  /*
+   * Memory. Without a ledger the loop behaves exactly as it did before: every
+   * task is new, nothing completes, and the delta is null. That is the honest
+   * result of a first run, and it is why the ledger is optional rather than
+   * required — the system must work before it has any history.
+   */
+  let ledger: Ledger = input.ledger ?? emptyLedger();
+  const byKey = new Map(ledger.entries.map((e) => [e.key, e]));
+  const liveKeys = openEntries(ledger).map((e) => e.key);
+  /** Re-read through `byKey`: an entry closed earlier in this loop is not live. */
+  const live = (): LedgerEntry[] =>
+    liveKeys.map((k) => byKey.get(k)!).filter((e) => e.status === 'open' || e.status === 'dormant');
+  const completionOpts = completionOptions(config);
+
+  /** Entries this run touched, so the rest can be carried forward untouched. */
+  const seenKeys = new Set<string>();
+  const addedEntries: LedgerEntry[] = [];
+  const completedEntries: Array<{ entry: LedgerEntry; signal: CompletionSignal }> = [];
+  const awaitingEntries: Array<{ entry: LedgerEntry; signal: CompletionSignal; reason: string }> = [];
+  /** Keys closed by the event currently being processed, to suppress its echo. */
+  let closedByThisEvent = new Set<string>();
 
   for (const event of input.events) {
     const isMail = event.sourceSystem === 'outlook' || event.sourceSystem === 'outlook_sent';
@@ -78,6 +115,40 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
     // --- Stage 1: identity, never blocking -----------------------------------
     const discovery = discoverFromEvent(event, team, config.organizations);
     const participantPersonIds = discovery.resolved.map((r) => r.personId);
+
+    /*
+     * --- Stage 1b: does this event FINISH something? -------------------------
+     *
+     * Deliberately before triage. "All set, invoice paid" implies no new work
+     * and triage is right to drop it — but it is the single most valuable mail
+     * in the window, because it is the only thing that can shrink the queue.
+     * Asking "does this create work?" before "does this end work?" is how a
+     * queue becomes a place things go to accumulate.
+     */
+    closedByThisEvent = new Set<string>();
+    const liveNow = live();
+    if (liveNow.length) {
+      const signals = detectCompletion(event, liveNow.map((e) => e.task), completionOpts);
+      for (const signal of signals) {
+        const entry = byKey.get(signal.taskId);
+        if (!entry || entry.status === 'completed' || seenKeys.has(`closed:${entry.key}`)) continue;
+
+        const auto = canAutoComplete(signal, completionOpts);
+        const outcome = applyCompletion(entry, signal, {
+          auto, syncAt: now.toISOString(), sourceRef: event.sourceExternalId,
+        });
+        byKey.set(entry.key, outcome.entry);
+
+        if (outcome.applied) {
+          completedEntries.push({ entry: outcome.entry, signal });
+          closedByThisEvent.add(entry.key);
+          seenKeys.add(entry.key);
+          seenKeys.add(`closed:${entry.key}`);
+        } else {
+          awaitingEntries.push({ entry: outcome.entry, signal, reason: outcome.reason });
+        }
+      }
+    }
 
     // --- Stage 2 & 3: triage and interpretation ------------------------------
     let interpretation: EventInterpretation | null = null;
@@ -168,7 +239,30 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
     // Recurring patterns are signals, not tasks.
     if (shouldAggregateAsSignal(matchHints(request, config.routingRules))) continue;
 
-    // --- Stage 5: dedup ------------------------------------------------------
+    /*
+     * --- Stage 5: dedup, against this run AND everything remembered ----------
+     *
+     * Matching only within the window is what made the queue grow forever: a
+     * reply on Thursday to Monday's thread arrives as a different event id and
+     * became a second copy of the same work. The ledger's open entries join
+     * the comparison so a continuation attaches to what it continues.
+     */
+    /*
+     * Closed entries stay in the comparison for a while, for two reasons that
+     * pull in opposite directions and both matter. The email that closed a
+     * task sits in the window for days afterward, and without the closed entry
+     * to match against it re-creates the very task it finished — completion
+     * that lasts one morning. But a genuinely NEW request that resembles
+     * finished work is a recurrence, not a duplicate, and `matchTask` already
+     * holds that for review rather than merging into a closed record.
+     * Telling the two apart is a question about the evidence, not the wording:
+     * the same source event is an echo, a different one is news.
+     */
+    // Read through `byKey`, not `ledger.entries`: an entry closed moments ago
+    // by this very event is only up to date in the map.
+    const closedRecently = [...byKey.values()].filter(
+      (e) => e.status === 'completed' && daysBetween(e.statusChangedAt, now) <= ECHO_WINDOW_DAYS);
+    const ledgerCandidates = live().concat(closedRecently);
     const match = matchTask(
       {
         title,
@@ -179,8 +273,33 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
         threadId: event.threadId,
         externalOrganizationId: event.organizationId,
       },
-      accepted,
+      accepted.concat(ledgerCandidates.map((e) => e.task)),
     );
+
+    // An event that closed a task usually also reads as one ("invoice paid").
+    // Creating work from the news that work is finished is the obvious trap,
+    // and it springs again every morning the closing message is still in view.
+    if (match.matchedTask && isEchoOfClosed(match, byKey.get(match.matchedTask.id), event, closedByThisEvent)) {
+      duplicates++;
+      continue;
+    }
+
+    if (match.decision === 'UPDATE_EXISTING' && match.matchedTask) {
+      const existing = byKey.get(match.matchedTask.id);
+      if (existing) {
+        // Continuation of remembered work: fold in the new evidence, keep the
+        // routing that was decided when there was enough context to decide it.
+        byKey.set(existing.key, refresh(existing, {
+          task: { ...existing.task, lastActivityAt: event.occurredAt,
+                  deadline: interpretation?.deadline ? isoOrNull(interpretation.deadline) : existing.task.deadline },
+          state: { ...existing.state, summary: (event.summary ?? '').slice(0, 240) || existing.state.summary,
+                   link: event.rawReference ?? existing.state.link, occurredAt: event.occurredAt },
+        }, now.toISOString()));
+        seenKeys.add(existing.key);
+      }
+      duplicates++;
+      continue;
+    }
     if (match.decision === 'UPDATE_EXISTING') { duplicates++; continue; }
 
     // NEEDS_REVIEW keeps the record but marks the suspected relationship, so
@@ -274,19 +393,88 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
     });
   }
 
-  // --- Rank ------------------------------------------------------------------
-  const ranked = rankTasks(drafts.map((d) => d.task), () => ({ rules: config.priorityRules, now }));
-  const rankById = new Map(ranked.map((r) => [r.task.id, r]));
+  /*
+   * --- Commit this run to memory --------------------------------------------
+   *
+   * A draft is either the first sight of something or a continuation of
+   * something remembered. Continuations were folded in above; what reaches
+   * here is genuinely new, so it enters the ledger and is announced as new.
+   */
+  const priorStatus = new Map(ledger.entries.map((e) => [e.key, e.status]));
+  for (const draft of drafts) {
+    const existing = byKey.get(draft.task.id);
+    if (existing) {
+      byKey.set(existing.key, refresh(existing, draft, now.toISOString()));
+      seenKeys.add(existing.key);
+      continue;
+    }
+    const created = newEntry(draft, now.toISOString());
+    byKey.set(created.key, created);
+    addedEntries.push(created);
+    seenKeys.add(created.key);
+  }
+  ledger = { ...ledger, entries: [...byKey.values()] };
 
-  const tasks = drafts.map((d) => {
-    const r = rankById.get(d.task.id);
+  /*
+   * --- Carry forward ---------------------------------------------------------
+   *
+   * The queue is the ledger, not the window. Work derived from an email nine
+   * days ago is still work; re-ranking it against today's clock is also the
+   * moment an approaching deadline finally lifts it, which a snapshot of the
+   * last seven days can never do.
+   */
+  const dormancy = markDormant(ledger, now, config.followupRules.resolution.stale_close_business_days
+    ? Math.min(15, config.followupRules.resolution.stale_close_business_days) : 15);
+  ledger = dormancy.ledger;
+  const carried = carryForward(ledger, seenKeys);
+
+  const queue = ledger.entries.filter((e) => e.status === 'open' || e.status === 'dormant');
+  const stateByKey = new Map<string, StateTask>();
+  for (const d of drafts) stateByKey.set(d.task.id, d.state);
+  for (const e of queue) if (!stateByKey.has(e.key)) stateByKey.set(e.key, e.state);
+
+  // --- Rank ------------------------------------------------------------------
+  const ranked = rankTasks(queue.map((e) => e.task), () => ({ rules: config.priorityRules, now }));
+  const rankById = new Map(ranked.map((r) => [r.task.id, r]));
+  const addedKeys = new Set(addedEntries.map((e) => e.key));
+
+  const tasks = queue.map((entry) => {
+    const r = rankById.get(entry.key);
+    const base = stateByKey.get(entry.key) ?? entry.state;
     return StateTask.parse({
-      ...d.state,
+      ...base,
       score: r?.score ?? 0,
       rank: r?.rank ?? null,
       drivers: r?.result.drivers.slice(0, 3) ?? [],
+      status: entry.status === 'dormant' ? 'dormant' : 'open',
+      ageDays: daysBetween(entry.firstSeenAt, now),
+      daysSilent: businessDaysBetween(new Date(entry.lastActivityAt), now),
+      isNew: addedKeys.has(entry.key),
+      seenCount: entry.seenCount,
     });
   }).sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+
+  // Work that had gone quiet and has now come back. Worth saying out loud:
+  // it is the one case where an old item deserves fresh attention.
+  const reopened = ledger.entries.filter(
+    (e) => e.status === 'open' && priorStatus.get(e.key) === 'dormant');
+
+  /*
+   * --- Who owes us something, and has for how long ---------------------------
+   *
+   * The counters live in the ledger, which is the whole reason this can run at
+   * all: a nudge that does not remember it already nudged is just noise on a
+   * schedule.
+   */
+  const followUpResult = resolveFollowUps(input.commitments ?? [], ledger, team, config, now);
+  ledger = followUpResult.ledger;
+
+  const delta: StateDelta | null = input.ledger
+    ? computeDelta(ledger, tasks, {
+        added: addedEntries, completed: completedEntries, awaiting: awaitingEntries,
+        reopened, wentQuiet: dormancy.wentQuiet,
+      }, now, input.ledger.updatedAt)
+    : null;
 
   const state = CommandCenterState.parse({
     version: 1,
@@ -300,6 +488,8 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
     signals: input.signals ?? [],
     proposals: input.proposals ?? [],
     finance: input.finance ?? null,
+    delta,
+    followUps: followUpResult.due,
     counts: {
       mailSeen,
       mailKept,
@@ -308,14 +498,45 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
       tasksCreated: tasks.length,
       duplicatesMerged: duplicates,
       needsReview,
+      carriedForward: carried.length,
+      completedThisRun: completedEntries.length,
     },
     problems,
   });
 
-  return { state, interpretations };
+  ledger = stampRanks(ledger, tasks, now.toISOString(), input.ledger?.updatedAt ?? null);
+
+  return { state, interpretations, ledger };
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * How long a closed entry keeps guarding against its own closing evidence.
+ * Comfortably longer than any pull window, and short enough that the same
+ * request six months later is correctly read as new work.
+ */
+const ECHO_WINDOW_DAYS = 45;
+
+/**
+ * Is this draft the closing message re-read, rather than new work?
+ *
+ * Only two things qualify: the entry was closed by this very event earlier in
+ * this run, or it was closed by this event on a previous run. Anything else
+ * that merely resembles closed work is a possible recurrence, and belongs in
+ * review rather than in silence.
+ */
+function isEchoOfClosed(
+  match: ReturnType<typeof matchTask>,
+  entry: LedgerEntry | undefined,
+  event: CanonicalEvent,
+  closedByThisEvent: Set<string>,
+): boolean {
+  if (!match.matchedTask) return false;
+  if (closedByThisEvent.has(match.matchedTask.id)) return true;
+  if (!entry || entry.status !== 'completed') return false;
+  return Boolean(event.sourceExternalId && entry.completion?.sourceRef === event.sourceExternalId);
+}
 
 function shortCircuit(event: CanonicalEvent, config: SystemConfig): string | null {
   if (isAutomatedSender(event.actor?.email ?? null, config.organizations)) return 'automated sender';

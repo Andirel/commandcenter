@@ -26,4 +26,5 @@ scratch/
 # Sync artifacts contain real company mail; state is regenerated per run.
 dist/pull-*.json
 dist/state.json
+dist/ledger.json
 dist/viewer-state.json

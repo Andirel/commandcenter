@@ -45,6 +45,16 @@
   STATE.chosen = STATE.chosen || {};
   STATE.done = STATE.done || [];
   STATE.view = STATE.view || 'today';
+  /*
+   * Answers to "did this get done?", by task id.
+   *
+   * These are the most valuable data the system collects: they are the only
+   * place a human tells it whether its inference was right. Held here rather
+   * than applied blind, and read back by the next sync so the ledger learns
+   * from them instead of asking again tomorrow.
+   */
+  STATE.completed = STATE.completed || {};
+  STATE.stillOpen = STATE.stillOpen || {};
 
   /**
    * The interpreted state document, embedded at build time by a sync run.
@@ -736,7 +746,18 @@
       if (!stateIds[t.id]) rawState.push(liveToState(t));
     });
     rawState = rawState.concat(generatedTasks())
-      .filter(function (t) { return STATE.dismissed.indexOf(t.id) < 0; });
+      .filter(function (t) { return STATE.dismissed.indexOf(t.id) < 0; })
+      // Confirmed done in this page. The next sync folds these into the
+      // ledger; until then the queue must not keep showing finished work.
+      .filter(function (t) { return !STATE.completed[t.id]; });
+
+    // Work that has gone quiet is real but is not today's plan. It gets its
+    // own group in the Queue, where the question "still live?" belongs.
+    // "Still live" said here overrides the ledger's read of the silence, and
+    // holds until the next sync folds the answer in.
+    var isQuiet = function (t) { return t.status === 'dormant' && !STATE.stillOpen[t.id]; };
+    var dormant = rawState.filter(isQuiet);
+    rawState = rawState.filter(function (t) { return !isQuiet(t); });
 
     var all = rawState.map(fromState);
 
@@ -805,6 +826,10 @@
     renderSlack();
     renderTeam();
     renderPlan(rawState);
+    renderChanged();
+    renderChase();
+    renderConfirm();
+    renderQuiet(dormant);
     renderProposals();
     renderProvenance();
   }
@@ -1075,7 +1100,7 @@
         card.appendChild(row);
 
         if (c.followUpOwner) {
-          var note = el('div', 'm-items',
+          var note = el('div', 'subline',
             (c.explicit ? '' : 'Implied. ') + c.followUpOwner + ' chases; ' +
             (c.relationshipOwner || 'the owner') + ' sends.');
           note.style.paddingLeft = '2px';
@@ -1143,6 +1168,281 @@
     } else {
       later.style.display = 'none';
     }
+  }
+
+/* ===========================================================================
+   SINCE YOU LAST LOOKED — the delta
+   =========================================================================== */
+
+  /**
+   * What changed since the previous sync.
+   *
+   * A snapshot answers "what is true". Someone opening this every morning is
+   * asking something narrower: "what do I need to look at that I have not
+   * already looked at". Only a delta answers that, and only a system with
+   * memory can compute one — which is why this block is empty on a first run
+   * and says so rather than presenting everything as news.
+   */
+  function renderChanged() {
+    var section = document.getElementById('b-changed');
+    var body = bodyOf('b-changed');
+    if (!section) return;
+    clear(body);
+
+    var d = DATA && DATA.delta;
+    if (!d) {
+      section.style.display = '';
+      section.querySelector('.note').textContent = '';
+      countOf('b-changed').textContent = '';
+      body.appendChild(el('div', 'empty',
+        'First sync — nothing to compare against yet. From tomorrow this shows what moved.'));
+      return;
+    }
+
+    // Answered in this page already; showing it again would be asking twice.
+    var completed = d.completed.filter(function (x) { return !STATE.stillOpen[x.id]; });
+    var added = d.added.filter(function (x) { return !STATE.completed[x.id]; });
+    var moved = d.moved.filter(function (x) { return !STATE.completed[x.id]; });
+    var quiet = d.quiet.filter(function (x) { return !STATE.completed[x.id]; });
+
+    var total = completed.length + added.length + moved.length + quiet.length + d.reopened.length;
+    section.style.display = '';
+    section.querySelector('.note').textContent = d.since ? 'since ' + relTime(d.since) : '';
+    countOf('b-changed').textContent = String(total);
+
+    if (!total) {
+      body.appendChild(el('div', 'empty', 'Nothing moved since your last sync.'));
+      return;
+    }
+
+    var chips = el('div', 'deltas');
+    [['completed', completed.length, 'finished'],
+     ['added', added.length, 'new'],
+     ['moved', moved.length, 'moved'],
+     ['reopened', d.reopened.length, 'came back'],
+     ['quiet', quiet.length, 'gone quiet']].forEach(function (row) {
+      if (!row[1]) return;
+      var chip = el('span', 'dchip');
+      chip.setAttribute('data-k', row[0]);
+      chip.appendChild(el('b', null, String(row[1])));
+      chip.appendChild(document.createTextNode(row[2]));
+      chips.appendChild(chip);
+    });
+    body.appendChild(chips);
+
+    var list = el('div', 'dlist');
+    completed.forEach(function (x) {
+      list.appendChild(deltaLine('completed', '✓', x.title, x.label, null));
+    });
+    d.reopened.forEach(function (x) {
+      list.appendChild(deltaLine('reopened', '↺', x.title, 'active again after going quiet', null));
+    });
+    moved.slice(0, 4).forEach(function (x) {
+      var dir = x.toRank < x.fromRank ? 'up' : 'down';
+      list.appendChild(deltaLine('moved', dir === 'up' ? '↑' : '↓', x.title, null,
+        '#' + x.fromRank + ' → #' + x.toRank));
+    });
+    added.slice(0, 4).forEach(function (x) {
+      list.appendChild(deltaLine('added', '+', x.title, null, x.rank ? '#' + x.rank : null));
+    });
+    quiet.slice(0, 3).forEach(function (x) {
+      list.appendChild(deltaLine('quiet', '·', x.title,
+        'no evidence for ' + x.daysSilent + ' days', null));
+    });
+    body.appendChild(list);
+  }
+
+  function deltaLine(kind, mark, title, sub, move) {
+    var row = el('div', 'dline');
+    row.setAttribute('data-k', kind);
+    row.appendChild(el('span', 'mark', mark));
+    var txt = el('div', 'txt');
+    txt.appendChild(document.createTextNode(title));
+    if (sub) { txt.appendChild(document.createElement('br')); txt.appendChild(el('span', 'sub', sub)); }
+    row.appendChild(txt);
+    if (move) row.appendChild(el('span', 'move', move));
+    return row;
+  }
+
+/* ===========================================================================
+   OWED TO US — commitments past their cadence
+   =========================================================================== */
+
+  /**
+   * Note what each row says: a draft is READY, for a named person.
+   *
+   * The system never writes in someone else's name, so the output of chasing
+   * is a prompt to whoever owns the relationship — not a sent message. What it
+   * contributes is the noticing, which is the part that actually fails.
+   */
+  function renderChase() {
+    var section = document.getElementById('b-chase');
+    var body = bodyOf('b-chase');
+    if (!section) return;
+    clear(body);
+
+    var due = (DATA && DATA.followUps) || [];
+    due = due.filter(function (f) { return !STATE.completed['commitment:' + f.id]; });
+    if (!due.length) { section.style.display = 'none'; return; }
+
+    section.style.display = '';
+    countOf('b-chase').textContent = String(due.length);
+
+    var card = el('div', 'card');
+    due.forEach(function (f) {
+      var item = el('div', 'qitem');
+      var row = el('div', 'wait-row');
+      var d = el('span', 'days mono', f.businessDaysOverdue + 'd');
+      if (f.escalateToCeo || f.businessDaysOverdue >= 10) d.setAttribute('data-late', '1');
+      row.appendChild(d);
+      row.appendChild(el('span', 'who', f.counterparty || f.owedBy || '—'));
+      row.appendChild(el('span', 'what', f.description));
+      item.appendChild(row);
+
+      var note = el('div', 'subline',
+        (f.attempt > 1 ? 'Nudge #' + f.attempt + '. ' : '') +
+        (f.dueDate ? 'Promised ' + fmtDate(f.dueDate) + '. ' : 'No date was ever given. ') +
+        (f.followUpOwner ? f.followUpOwner + ' chases' : 'Nobody assigned to chase') +
+        (f.relationshipOwner ? '; ' + f.relationshipOwner + ' sends.' : '.'));
+      note.style.paddingLeft = '2px';
+      item.appendChild(note);
+
+      if (f.quote) {
+        // Their own words. Far more persuasive to whoever has to send the
+        // nudge than any summary of them.
+        var q = el('div', 'ev', '\u201C' + f.quote + '\u201D');
+        q.style.margin = '7px 0 0 2px';
+        item.appendChild(q);
+      }
+
+      var act = el('div', 'fix');
+      var got = el('button', 'btn tiny', 'Already have it');
+      got.addEventListener('click', function () {
+        STATE.completed['commitment:' + f.id] = { at: new Date().toISOString(), by: 'confirmed' };
+        persist(); renderAll();
+      });
+      act.appendChild(got);
+      act.style.paddingLeft = '2px';
+      item.appendChild(act);
+      card.appendChild(item);
+    });
+    body.appendChild(card);
+  }
+
+/* ===========================================================================
+   DID THESE GET DONE? — inference that stops short of acting
+   =========================================================================== */
+
+  /**
+   * Evidence conclusive enough to close cheap work, on an item too
+   * consequential to close on inference.
+   *
+   * The asymmetry decides it: a task wrongly left open costs a moment to
+   * dismiss, while a $40k commitment wrongly closed disappears along with the
+   * money. So the system does the noticing and the human does the deciding,
+   * which is one click either way.
+   */
+  function renderConfirm() {
+    var section = document.getElementById('b-confirm');
+    var body = bodyOf('b-confirm');
+    if (!section) return;
+    clear(body);
+
+    var pending = ((DATA && DATA.delta && DATA.delta.awaitingConfirmation) || [])
+      .filter(function (x) { return !STATE.completed[x.id] && !STATE.stillOpen[x.id]; });
+    if (!pending.length) { section.style.display = 'none'; return; }
+
+    section.style.display = '';
+    countOf('b-confirm').textContent = String(pending.length);
+
+    pending.forEach(function (x) {
+      var card = el('div', 'confirm');
+      card.appendChild(el('div', 'q', x.title));
+      card.appendChild(el('div', 'ev', x.evidence));
+      card.appendChild(el('div', 'why',
+        'Reads as ' + x.label + ' (' + Math.round(x.confidence * 100) + '% confident), but ' + x.reason + '.'));
+
+      var act = el('div', 'fix');
+      var yes = el('button', 'btn tiny primary', 'Yes, done');
+      yes.addEventListener('click', function () {
+        STATE.completed[x.id] = { at: new Date().toISOString(), by: 'confirmed' };
+        persist(); renderAll();
+      });
+      var no = el('button', 'btn tiny', 'No, still open');
+      no.addEventListener('click', function () {
+        // Recorded, not just dismissed: this is the system being told it read
+        // the evidence wrong, which is worth more than the answer itself.
+        STATE.stillOpen[x.id] = new Date().toISOString();
+        persist(); renderAll();
+      });
+      act.appendChild(yes); act.appendChild(no);
+      card.appendChild(act);
+      body.appendChild(card);
+    });
+  }
+
+/* ===========================================================================
+   GONE QUIET — asked once, not every morning
+   =========================================================================== */
+
+  function renderQuiet(tasks) {
+    var section = document.getElementById('b-quiet');
+    var body = bodyOf('b-quiet');
+    if (!section) return;
+    clear(body);
+    if (!tasks || !tasks.length) { section.style.display = 'none'; return; }
+
+    section.style.display = '';
+    countOf('b-quiet').textContent = String(tasks.length);
+
+    /*
+     * Capped deliberately. After a long gap the ledger can hold dozens of
+     * quiet items at once, and putting thirty "was this done?" buttons on one
+     * page is the same nagging the cadence rules exist to prevent — just all
+     * at once instead of daily. Show the longest-silent few; the rest keep
+     * their place and surface as these are answered.
+     */
+    var QUIET_SHOWN = 6;
+    var shown = tasks.slice()
+      .sort(function (a, b) { return (b.daysSilent || 0) - (a.daysSilent || 0); })
+      .slice(0, QUIET_SHOWN);
+
+    var card = el('div', 'card');
+    shown.forEach(function (t) {
+      var item = el('div', 'qitem');
+      var row = el('div', 'wait-row');
+      var d = el('span', 'days mono', (t.daysSilent == null ? '?' : t.daysSilent) + 'd');
+      d.setAttribute('data-late', '1');
+      row.appendChild(d);
+      row.appendChild(el('span', 'who', t.primaryOwner || t.externalParty || '—'));
+      row.appendChild(el('span', 'what', t.title));
+      item.appendChild(row);
+
+      var act = el('div', 'fix');
+      var done = el('button', 'btn tiny', 'Was done');
+      done.addEventListener('click', function () {
+        STATE.completed[t.id] = { at: new Date().toISOString(), by: 'manual' };
+        persist(); renderAll();
+      });
+      var live = el('button', 'btn tiny', 'Still live');
+      live.addEventListener('click', function () {
+        STATE.stillOpen[t.id] = new Date().toISOString();
+        persist(); renderAll();
+      });
+      act.appendChild(done); act.appendChild(live);
+      act.style.paddingLeft = '2px';
+      item.appendChild(act);
+      card.appendChild(item);
+    });
+
+    if (tasks.length > shown.length) {
+      var more = el('div', 'subline',
+        (tasks.length - shown.length) + ' more have gone quiet. They keep their place; ' +
+        'these surface as you answer.');
+      more.style.paddingLeft = '2px';
+      card.appendChild(more);
+    }
+    body.appendChild(card);
   }
 
   function stepRow(slot, n) {
@@ -1858,6 +2158,10 @@
       stateEl.textContent = JSON.stringify({
         corrections: STATE.corrections,
         dismissed: STATE.dismissed,
+        completed: STATE.completed,
+        stillOpen: STATE.stillOpen,
+        chosen: STATE.chosen,
+        done: STATE.done,
         lastSync: STATE.lastSync
       });
       var doc = '<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n' +
