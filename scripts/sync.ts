@@ -28,7 +28,7 @@ import { CanonicalEvent } from '../src/schemas/events.js';
 import { SessionClient, defaultClient } from '../src/ai/client.js';
 import type { StageContext, InterpretationRecord } from '../src/ai/stages.js';
 import { runSync } from '../src/sync/run.js';
-import { StateCommitment, StateMeeting, StateSignal, StateFinance } from '../src/sync/state.js';
+import { StateCommitment, StateMeeting, StateSignal, StateFinance, StateProposal } from '../src/sync/state.js';
 import { readPnl, financeSignals, latestClosedIndex, type PnlNode } from '../src/signals/finance.js';
 import { parseSalesRows, salesTrend, commerceSignals } from '../src/signals/commerce.js';
 
@@ -49,6 +49,7 @@ const pull = JSON.parse(readFileSync(resolve(pullPath), 'utf8')) as {
   commitments?: unknown[];
   interpretations?: Record<string, unknown>;
   /** Raw connector payloads; signals are derived here rather than hand-written. */
+  proposals?: unknown[];
   finaloopPnl?: unknown;
   shopifySales?: { columns?: Array<{ name: string }>; rows?: unknown[][] };
 };
@@ -59,6 +60,7 @@ const team = teamModelFromConfig(config);
 const events = (pull.events ?? []).map((e) => CanonicalEvent.parse(e));
 const meetings = (pull.meetings ?? []).map((m) => StateMeeting.parse(m));
 const commitments = (pull.commitments ?? []).map((c) => StateCommitment.parse(c));
+const proposals = (pull.proposals ?? []).map((p) => StateProposal.parse(p));
 
 // Derive financial and commerce signals from the raw payloads, so the same code
 // runs here and in the browser rather than two drifting implementations.
@@ -126,7 +128,7 @@ if (pull.interpretations && Object.keys(pull.interpretations).length) {
 }
 
 const { state, interpretations } = await runSync({
-  events, meetings, commitments, signals, finance, config, team,
+  events, meetings, commitments, signals, finance, proposals, config, team,
   ...(ai ? { ai } : {}),
   ...(pull.window ? { window: pull.window } : {}),
 });
@@ -145,6 +147,7 @@ console.log(`  duplicates       ${c.duplicatesMerged}`);
 console.log(`  needs review     ${c.needsReview}`);
 console.log(`  commitments      ${state.commitments.length}`);
 console.log(`  signals          ${state.signals.length}`);
+console.log(`  proposals        ${state.proposals.length}`);
 if (state.finance?.closed) {
   const c = state.finance.closed;
   console.log(`  books closed     ${c.period} — net ${Math.round(c.netProfit)}`);

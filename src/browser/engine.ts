@@ -20,9 +20,10 @@ import { normalizeOutlookMessage, isBulkMail } from '../normalization/outlook.js
 import { normalizeZoomAssets, parseZoomSummaryMarkdown } from '../normalization/zoom.js';
 import { normalizeSlackMessage, isSlackNoise } from '../normalization/slack.js';
 import { composeDailyBrief } from '../brief/daily.js';
+import { buildDayPlan, estimateMinutes, blocksSomeone } from '../brief/plan.js';
 import { renderDailyBrief } from '../brief/render.js';
 import { findDueFollowUps } from '../followup/engine.js';
-import { readPnl, financeSignals, findNode, money, pct } from '../signals/finance.js';
+import { readPnl, financeSignals, latestClosedIndex, findNode, money, pct } from '../signals/finance.js';
 import { parseSalesRows, salesTrend, commerceSignals } from '../signals/commerce.js';
 import { RoutingRequest } from '../schemas/routing.js';
 import { Task } from '../schemas/tasks.js';
@@ -40,7 +41,8 @@ export {
   normalizeZoomAssets, parseZoomSummaryMarkdown,
   normalizeSlackMessage, isSlackNoise,
   composeDailyBrief, renderDailyBrief, findDueFollowUps,
-  readPnl, financeSignals, findNode, money, pct,
+  readPnl, financeSignals, latestClosedIndex, findNode, money, pct,
+  buildDayPlan, estimateMinutes, blocksSomeone,
   parseSalesRows, salesTrend, commerceSignals,
   RoutingRequest, Task,
 };

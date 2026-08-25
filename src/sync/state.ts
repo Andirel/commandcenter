@@ -140,6 +140,43 @@ export const StateFinance = z.object({
 }).nullable();
 export type StateFinance = z.infer<typeof StateFinance>;
 
+/**
+ * One thing the company could do, grounded in what actually happened.
+ *
+ * A proposal is not a task. It is a choice put to the CEO, and it only becomes
+ * work once accepted — at which point `generates` is routed through the same
+ * owner-selection engine everything else uses, so a chosen strategy arrives
+ * with real owners rather than as a note.
+ */
+export const StateProposal = z.object({
+  id: z.string(),
+  title: z.string(),
+  rationale: z.string(),
+  /** The specific facts it rests on. A proposal with no basis is an opinion. */
+  basis: z.array(z.string()).default([]),
+  horizon: z.enum(['now', 'quarter', 'year']),
+  expectedImpact: z.number().int().min(1).max(5),
+  effort: z.number().int().min(1).max(5),
+  businessArea: z.string().nullable().default(null),
+  valueAtStake: z.number().nullable().default(null),
+  confidence: Confidence.default(0.6),
+
+  /** What accepting it would create. Routed on selection, not before. */
+  generates: z.array(z.object({
+    title: z.string(),
+    description: z.string().nullable().default(null),
+    businessArea: z.string().nullable().default(null),
+    requiredCapabilities: z.array(z.string()).default([]),
+    isDecision: z.boolean().default(false),
+    isApproval: z.boolean().default(false),
+    isStrategicDirection: z.boolean().default(false),
+    isPricingOrOffer: z.boolean().default(false),
+    isInformationGathering: z.boolean().default(false),
+    valueAtStake: z.number().nullable().default(null),
+  })).default([]),
+});
+export type StateProposal = z.infer<typeof StateProposal>;
+
 export const CommandCenterState = z.object({
   version: z.literal(1),
   generatedAt: z.string(),
@@ -152,6 +189,7 @@ export const CommandCenterState = z.object({
   triage: z.array(StateTriageRow).default([]),
   meetings: z.array(StateMeeting).default([]),
   signals: z.array(StateSignal).default([]),
+  proposals: z.array(StateProposal).default([]),
   finance: StateFinance.default(null),
 
   counts: z.object({

@@ -195,3 +195,53 @@ Signals are not decoration. They feed `config/priority-rules.yaml` →
 `signal_multipliers` and `compound_rules`, which is how a cash risk coinciding
 with an inventory risk raises the production task on its own. That
 cross-functional lift is the reason signals exist at all.
+
+---
+
+## Three views, not one long page
+
+`Today` · `Queue` · `Strategy`. Adding sections to a single page makes it
+longer; separating concerns makes each one answerable at a glance.
+
+### Today — the ordered plan
+
+A ranked list answers *what matters most*. It does not answer *what should I do
+first*, and the two differ for one reason that dominates the rest:
+
+> **The value of unblocking someone decays through the day.**
+
+Approving Chase's content at 09:00 buys a full day of his work. The same
+approval at 16:30 buys nothing until tomorrow. So a five-minute approval that
+frees a colleague outranks an hour of the CEO's own higher-scoring work in the
+morning — and stops outranking it by late afternoon. `src/brief/plan.ts` encodes
+that, and the tests assert the reasoning changes with the clock.
+
+Two further rules:
+
+- **Attention is priced by MODE, not by size.** Approving a $50k production run
+  and approving a social post both cost about five minutes. Pricing by value at
+  stake would make the plan wrong about the only thing it measures.
+- **One strategic slot is reserved**, so the long term is never entirely crowded
+  out by today.
+
+The plan is budgeted against the hours actually left. A plan needing nine hours
+at 15:00 is not a plan, and saying otherwise is how a daily tool stops being
+opened.
+
+### Strategy — proposals that become work
+
+A proposal is a **choice put to the CEO**, not a task and not advice. Every one
+cites the facts it rests on; a proposal with no basis is an opinion, and the CEO
+knows his business better than the system does.
+
+Accepting one routes its `generates` entries through **the same owner-selection
+engine everything else uses**. Choosing "set a spend floor with Quartile"
+produces a real decision owned by the CEO with Quartile as counterparty, and a
+real investigation task — not a note to self. The chosen work then appears in
+Today, ordered alongside everything else.
+
+The proposals worth most are the ones that **convert a recurring decision into a
+policy**. A standing cap on non-cancellable media commitments removes the same
+decision from every future week and lets the partner filter before it reaches
+the CEO. That is worth more than any single well-made decision, and is exactly
+what an attention-allocation system should be looking for.

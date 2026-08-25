@@ -239,6 +239,67 @@ select {
 .meeting .m-topic { font-size: 13.5px; font-weight: 600; flex: 1; min-width: 0; }
 .meeting .m-items { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
 
+/* --- views ----------------------------------------------------------------- */
+.views { display: flex; gap: 2px; margin: 0 0 20px; border-bottom: 1px solid var(--line); }
+.view-btn {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 7px 14px 9px; cursor: pointer; font-size: 13.5px; font-weight: 500;
+  color: var(--ink-3); margin-bottom: -1px;
+}
+.view-btn:hover { color: var(--ink); }
+.view-btn[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.pane { display: none; }
+.pane.on { display: block; }
+.cols.pane.on { display: grid; }
+
+/* --- day plan -------------------------------------------------------------- */
+.step { display: flex; gap: 13px; padding: 13px 0; border-bottom: 1px solid var(--line-soft); }
+.step:last-child { border-bottom: 0; }
+.step-n {
+  flex: none; width: 25px; height: 25px; border-radius: 50%;
+  background: var(--surface-2); color: var(--ink-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; font-family: "IBM Plex Mono", monospace;
+}
+.step[data-kind="unblock"] .step-n { background: var(--accent); color: var(--accent-ink); }
+.step[data-kind="deadline"] .step-n { background: var(--crit-soft); color: var(--crit); }
+.step-body { flex: 1; min-width: 0; }
+.step-title { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.step-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; }
+.step-why { font-size: 13px; color: var(--ink-2); margin-top: 5px; }
+.step-move { font-size: 13px; margin-top: 3px; }
+.step-move b { font-weight: 600; }
+.mins { font-size: 11.5px; color: var(--ink-3); font-family: "IBM Plex Mono", monospace; }
+.budget {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 11px 14px; margin-bottom: 14px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--line-soft); box-shadow: var(--shadow);
+}
+.budget .big { font-size: 15px; font-weight: 600; }
+.budget .sub { font-size: 13px; color: var(--ink-3); }
+.bar { flex-basis: 100%; height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; margin-top: 3px; }
+.bar span { display: block; height: 100%; background: var(--accent); }
+.bar[data-over="1"] span { background: var(--crit); }
+
+/* --- proposals ------------------------------------------------------------- */
+.prop { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 15px 17px; margin-bottom: 11px; box-shadow: var(--shadow); }
+.prop.chosen { border-color: var(--accent); }
+.prop-top { display: flex; gap: 11px; align-items: flex-start; }
+.prop h3 { font-size: 16px; font-weight: 600; line-height: 1.3; flex: 1; min-width: 0; }
+.horizon { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; background: var(--surface-2); color: var(--ink-2); }
+.horizon[data-h="now"] { background: var(--accent); color: var(--accent-ink); }
+.prop-why { font-size: 13.5px; color: var(--ink-2); margin-top: 8px; }
+.basis { margin-top: 10px; padding-left: 13px; border-left: 2px solid var(--line); }
+.basis li { font-size: 12.5px; color: var(--ink-3); margin-bottom: 3px; list-style: none; }
+.basis li::before { content: "— "; }
+.prop-meta { display: flex; gap: 14px; margin-top: 11px; font-size: 12px; color: var(--ink-3); }
+.prop-meta b { color: var(--ink); font-weight: 600; }
+.gen { margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--line-soft); }
+.gen-h { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
+.gen-row { font-size: 13px; padding: 3px 0; display: flex; gap: 7px; align-items: baseline; }
+.gen-row .who { font-size: 11.5px; color: var(--ink-3); flex: none; }
+.prop-act { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+
 /* --- business panel -------------------------------------------------------- */
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line-soft); border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
 .stat { background: var(--surface); padding: 9px 11px; }
@@ -311,6 +372,12 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: 12px; backgrou
     </div>
   </header>
 
+  <nav class="views" role="tablist" aria-label="View">
+    <button class="view-btn" role="tab" data-view="today" aria-selected="true">Today</button>
+    <button class="view-btn" role="tab" data-view="queue" aria-selected="false">Queue</button>
+    <button class="view-btn" role="tab" data-view="strategy" aria-selected="false">Strategy</button>
+  </nav>
+
   <div class="strip" id="strip">
     <span class="conn" data-state="off"><span class="dot"></span>Connectors</span>
     <span class="meta" id="strip-meta">Not yet synced</span>
@@ -318,7 +385,36 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: 12px; backgrou
 
   <div id="notices"></div>
 
-  <div class="cols">
+  <div class="pane" id="pane-today">
+    <section class="block" id="b-plan">
+      <div class="block-head">
+        <h2>In order, by end of day</h2><span class="count"></span>
+        <span class="note"></span>
+      </div>
+      <div class="body"><div class="empty">Sync to load.</div></div>
+    </section>
+    <section class="block" id="b-later">
+      <div class="block-head"><h2>Not today</h2><span class="count"></span>
+        <span class="note">Didn't fit the hours left</span></div>
+      <div class="body"></div>
+    </section>
+  </div>
+
+  <div class="pane" id="pane-strategy">
+    <section class="block" id="b-proposals">
+      <div class="block-head">
+        <h2>Worth considering</h2><span class="count"></span>
+        <span class="note">Choose one and it becomes routed work</span>
+      </div>
+      <div class="body"><div class="empty">Sync to load.</div></div>
+    </section>
+    <section class="block" id="b-chosen">
+      <div class="block-head"><h2>Underway</h2><span class="count"></span></div>
+      <div class="body"></div>
+    </section>
+  </div>
+
+  <div class="cols pane" id="pane-queue">
     <main>
       <section class="block" id="b-decisions">
         <div class="block-head">

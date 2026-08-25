@@ -40,6 +40,10 @@
   })();
   STATE.corrections = STATE.corrections || {};
   STATE.dismissed = STATE.dismissed || [];
+  /** Proposals the CEO accepted, with the work each one produced. */
+  STATE.chosen = STATE.chosen || {};
+  STATE.done = STATE.done || [];
+  STATE.view = STATE.view || 'today';
 
   /**
    * The interpreted state document, embedded at build time by a sync run.
@@ -83,6 +87,33 @@
       needsReview: t.needsReview,
       possibleDuplicateOf: t.possibleDuplicateOf || null,
       duplicateSimilarity: t.duplicateSimilarity || null
+    };
+  }
+
+  /** Live-pulled task → StateTask shape, so one vocabulary reaches the engine. */
+  function liveToState(t) {
+    var r = t.routed;
+    return {
+      id: t.id, title: t.title, summary: t.preview || null, source: t.source,
+      sourceRef: null, link: t.link, occurredAt: t.at,
+      businessArea: null, requiredCapabilities: [],
+      primaryOwner: E.lookup.personName(r.primaryOwnerPersonId),
+      projectManager: E.lookup.personName(r.projectManagerPersonId),
+      decisionMaker: E.lookup.personName(r.decisionMakerPersonId),
+      externalParty: E.lookup.orgName(r.externalCounterpartyOrganizationId),
+      collaborators: [],
+      ceoRequired: r.ceoRequired,
+      ceoActionMode: r.ceoActionMode,
+      leverageClass: r.leverage.classification,
+      approvalClass: r.approvalClass,
+      delegable: r.delegable,
+      deadline: null, valueAtStake: null,
+      score: 0, rank: null, drivers: [],
+      routingReason: r.reason,
+      attributedTo: t.attributedTo || null, attributionOverridden: false,
+      confidence: r.confidence, needsReview: r.needsReview,
+      possibleDuplicateOf: null, duplicateSimilarity: null,
+      interpreted: false
     };
   }
 
@@ -610,13 +641,19 @@
   function renderAll() {
     // Interpreted state is authoritative; the live pull supplements it with
     // anything that arrived since, routed on metadata alone.
-    var stateTasks = (DATA && DATA.tasks ? DATA.tasks : []).map(fromState);
+    // One vocabulary: assemble everything in STATE shape, then adapt once for
+    // rendering. Mixing the two is how `ceoActionMode` silently reads undefined.
+    var rawState = (DATA && DATA.tasks) ? DATA.tasks.slice() : [];
     var stateIds = {};
-    stateTasks.forEach(function (t) { stateIds[t.id] = true; });
-    var liveTasks = VIEW.tasks.map(fromLive).filter(function (t) { return !stateIds[t.id]; });
+    rawState.forEach(function (t) { stateIds[t.id] = true; });
 
-    var all = stateTasks.concat(liveTasks)
+    VIEW.tasks.forEach(function (t) {
+      if (!stateIds[t.id]) rawState.push(liveToState(t));
+    });
+    rawState = rawState.concat(generatedTasks())
       .filter(function (t) { return STATE.dismissed.indexOf(t.id) < 0; });
+
+    var all = rawState.map(fromState);
 
     // Group suspected duplicates under the record they match, so one incident
     // reported twice reads as one item with two sources.
@@ -681,6 +718,8 @@
     renderBusiness();
     renderSlack();
     renderTeam();
+    renderPlan(rawState);
+    renderProposals();
     renderProvenance();
   }
 
@@ -967,6 +1006,306 @@
    * Leads with the one number that matters — is the period making money — then
    * the movement that explains it, then only signals material enough to act on.
    */
+/* ===========================================================================
+   TODAY — the ordered plan
+   =========================================================================== */
+
+  function renderPlan(tasks) {
+    var section = document.getElementById('b-plan');
+    var body = bodyOf('b-plan');
+    var later = document.getElementById('b-later');
+    clear(body); clear(bodyOf('b-later'));
+
+    var plan = E.buildDayPlan(tasks, { ceoName: 'Adi' });
+
+    if (!plan.slots.length && !plan.deferred.length) {
+      section.style.display = '';
+      body.appendChild(el('div', 'empty', 'Nothing needs you today.'));
+      later.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+    section.querySelector('.note').textContent = plan.fits ? 'fits the day' : 'more than fits';
+    countOf('b-plan').textContent = String(plan.slots.length);
+
+    // Budget first: a plan that ignores the hours left is not a plan.
+    var budget = el('div', 'budget');
+    budget.appendChild(el('span', 'big', fmtMins(plan.minutesPlanned)));
+    budget.appendChild(el('span', 'sub', plan.summary));
+    var bar = el('div', 'bar');
+    var pctFull = plan.minutesAvailable > 0
+      ? Math.min(100, (plan.minutesPlanned / plan.minutesAvailable) * 100) : 100;
+    if (plan.minutesPlanned > plan.minutesAvailable) bar.setAttribute('data-over', '1');
+    var fill = el('span'); fill.style.width = pctFull + '%';
+    bar.appendChild(fill);
+    budget.appendChild(bar);
+    body.appendChild(budget);
+
+    plan.slots.forEach(function (slot, i) { body.appendChild(stepRow(slot, i + 1)); });
+
+    if (plan.deferred.length) {
+      later.style.display = '';
+      countOf('b-later').textContent = String(plan.deferred.length);
+      var card = el('div', 'card');
+      plan.deferred.forEach(function (slot) {
+        var row = el('div', 'wait-row');
+        row.appendChild(el('span', 'days mono', fmtMins(slot.minutes)));
+        row.appendChild(el('span', 'what', slot.task.title));
+        card.appendChild(row);
+      });
+      bodyOf('b-later').appendChild(card);
+    } else {
+      later.style.display = 'none';
+    }
+  }
+
+  function stepRow(slot, n) {
+    var t = slot.task;
+    var row = el('div', 'step');
+    row.setAttribute('data-kind', slot.kind);
+
+    var done = STATE.done.indexOf(t.id) >= 0;
+    var num = el('div', 'step-n', done ? '✓' : String(n));
+    row.appendChild(num);
+
+    var b = el('div', 'step-body');
+    var title = el('div', 'step-title', t.title);
+    if (done) { title.style.textDecoration = 'line-through'; title.style.opacity = '.55'; }
+    b.appendChild(title);
+
+    var meta = el('div', 'step-meta');
+    if (t.ceoActionMode) {
+      var mode = el('span', 'mode', t.ceoActionMode.replace(/_/g, ' '));
+      mode.setAttribute('data-m', t.ceoActionMode);
+      meta.appendChild(mode);
+    }
+    meta.appendChild(el('span', 'mins', fmtMins(slot.minutes)));
+    if (t.primaryOwner && t.primaryOwner !== 'Adi') meta.appendChild(rolePill('With', t.primaryOwner));
+    if (t.externalParty) meta.appendChild(rolePill('External', t.externalParty, true));
+    if (t.deadline) meta.appendChild(rolePill('Due', fmtDate(t.deadline)));
+    b.appendChild(meta);
+
+    b.appendChild(el('div', 'step-why', slot.why));
+    var move = el('div', 'step-move');
+    move.appendChild(el('b', null, 'Next: '));
+    move.appendChild(document.createTextNode(slot.move));
+    b.appendChild(move);
+
+    var act = el('div', 'fix');
+    var mark = el('button', 'btn tiny', done ? 'Undo' : 'Done');
+    mark.addEventListener('click', function () {
+      var i = STATE.done.indexOf(t.id);
+      if (i >= 0) STATE.done.splice(i, 1); else STATE.done.push(t.id);
+      persist(); renderAll();
+    });
+    act.appendChild(mark);
+    if (t.link) {
+      var open = document.createElement('a');
+      open.href = t.link; open.target = '_blank'; open.rel = 'noopener';
+      open.className = 'btn tiny'; open.textContent = 'Open';
+      open.style.textDecoration = 'none';
+      act.appendChild(open);
+    }
+    b.appendChild(act);
+
+    row.appendChild(b);
+    return row;
+  }
+
+  function fmtMins(m) {
+    if (m >= 60) return (m / 60).toFixed(m % 60 === 0 ? 0 : 1) + 'h';
+    return m + 'm';
+  }
+
+/* ===========================================================================
+   STRATEGY — proposals, and the work choosing one creates
+   =========================================================================== */
+
+  /**
+   * Tasks materialized from accepted proposals.
+   *
+   * Routed through the SAME engine as everything else, so a chosen strategy
+   * arrives with a real owner rather than as a note to self.
+   */
+  function generatedTasks() {
+    var out = [];
+    Object.keys(STATE.chosen).forEach(function (pid) {
+      (STATE.chosen[pid].tasks || []).forEach(function (t) {
+        if (STATE.dismissed.indexOf(t.id) >= 0) return;
+        out.push(t);
+      });
+    });
+    return out;
+  }
+
+  function renderProposals() {
+    var section = document.getElementById('b-proposals');
+    var body = bodyOf('b-proposals');
+    clear(body);
+    var proposals = (DATA && DATA.proposals) || [];
+    if (!proposals.length) {
+      body.appendChild(el('div', 'empty', 'Nothing to weigh up right now.'));
+    } else {
+      var open = proposals.filter(function (p) { return !STATE.chosen[p.id]; });
+      countOf('b-proposals').textContent = String(open.length);
+      if (!open.length) body.appendChild(el('div', 'empty', 'All current options taken up.'));
+      open.forEach(function (p) { body.appendChild(proposalCard(p, false)); });
+    }
+    renderChosen(proposals);
+  }
+
+  function renderChosen(proposals) {
+    var section = document.getElementById('b-chosen');
+    var body = bodyOf('b-chosen');
+    clear(body);
+    var ids = Object.keys(STATE.chosen);
+    if (!ids.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    countOf('b-chosen').textContent = String(ids.length);
+    ids.forEach(function (id) {
+      var p = proposals.filter(function (x) { return x.id === id; })[0];
+      if (p) body.appendChild(proposalCard(p, true));
+    });
+  }
+
+  function proposalCard(p, chosen) {
+    var card = el('div', 'prop' + (chosen ? ' chosen' : ''));
+
+    var top = el('div', 'prop-top');
+    top.appendChild(el('h3', null, p.title));
+    var h = el('span', 'horizon', p.horizon === 'now' ? 'now' : p.horizon);
+    h.setAttribute('data-h', p.horizon);
+    top.appendChild(h);
+    card.appendChild(top);
+
+    card.appendChild(el('div', 'prop-why', p.rationale));
+
+    // The facts it rests on. A proposal without these is an opinion.
+    if (p.basis && p.basis.length) {
+      var ul = el('ul', 'basis');
+      p.basis.forEach(function (b) { ul.appendChild(el('li', null, b)); });
+      card.appendChild(ul);
+    }
+
+    var meta = el('div', 'prop-meta');
+    meta.appendChild(labelled('Impact', p.expectedImpact + '/5'));
+    meta.appendChild(labelled('Effort', p.effort + '/5'));
+    if (p.valueAtStake) meta.appendChild(labelled('At stake', E.money(p.valueAtStake)));
+    card.appendChild(meta);
+
+    // Preview what accepting it would create, routed live so the owners shown
+    // are the real ones.
+    var gen = el('div', 'gen');
+    gen.appendChild(el('div', 'gen-h', chosen ? 'Created' : 'Choosing this creates'));
+    (p.generates || []).forEach(function (g) {
+      var routed = routeGenerated(g);
+      var row = el('div', 'gen-row');
+      row.appendChild(el('span', null, '· ' + g.title));
+      row.appendChild(el('span', 'who', ownerLabel(routed)));
+      gen.appendChild(row);
+    });
+    card.appendChild(gen);
+
+    var act = el('div', 'prop-act');
+    if (!chosen) {
+      var take = el('button', 'btn primary tiny', 'Take this on');
+      take.addEventListener('click', function () { chooseProposal(p); });
+      act.appendChild(take);
+      var pass = el('button', 'btn tiny', 'Not now');
+      pass.addEventListener('click', function () {
+        STATE.chosen[p.id] = { at: new Date().toISOString(), passed: true, tasks: [] };
+        persist(); renderAll();
+      });
+      act.appendChild(pass);
+    } else {
+      var note = el('span', 'mins', STATE.chosen[p.id].passed
+        ? 'Passed on ' + fmtDate(STATE.chosen[p.id].at)
+        : 'Taken on ' + fmtDate(STATE.chosen[p.id].at));
+      act.appendChild(note);
+      var undo = el('button', 'btn tiny', 'Undo');
+      undo.addEventListener('click', function () {
+        delete STATE.chosen[p.id];
+        persist(); renderAll();
+      });
+      act.appendChild(undo);
+    }
+    card.appendChild(act);
+    return card;
+  }
+
+  function labelled(k, v) {
+    var s = el('span');
+    s.appendChild(document.createTextNode(k + ' '));
+    s.appendChild(el('b', null, v));
+    return s;
+  }
+
+  /** Route one generated item through the real engine. */
+  function routeGenerated(g) {
+    return E.route({
+      title: g.title,
+      description: g.description,
+      businessArea: g.businessArea,
+      requiredCapabilities: g.requiredCapabilities || [],
+      valueAtStake: g.valueAtStake === undefined ? null : g.valueAtStake,
+      isDecision: !!g.isDecision,
+      isApproval: !!g.isApproval,
+      isStrategicDirection: !!g.isStrategicDirection,
+      isPricingOrOffer: !!g.isPricingOrOffer,
+      isInformationGathering: !!g.isInformationGathering
+    });
+  }
+
+  function ownerLabel(r) {
+    var owner = E.lookup.personName(r.primaryOwnerPersonId)
+      || E.lookup.orgName(r.externalCounterpartyOrganizationId);
+    if (r.ceoRequired && (r.ceoActionMode === 'DECIDE' || r.ceoActionMode === 'APPROVE')) {
+      return owner && owner !== 'Adi' ? owner + ' · you ' + r.ceoActionMode.toLowerCase() : 'you ' + r.ceoActionMode.toLowerCase();
+    }
+    return owner || 'unassigned';
+  }
+
+  /** Accepting a proposal materializes its work into the real queue. */
+  function chooseProposal(p) {
+    var tasks = (p.generates || []).map(function (g, i) {
+      var r = routeGenerated(g);
+      return {
+        id: 'prop:' + p.id + ':' + i,
+        title: g.title,
+        summary: g.description || null,
+        source: 'Manual',
+        link: null,
+        occurredAt: new Date().toISOString(),
+        sourceRef: null,
+        score: 12 + (p.expectedImpact * 3),
+        rank: null,
+        drivers: ['you chose to take on "' + p.title + '"'],
+        primaryOwner: E.lookup.personName(r.primaryOwnerPersonId),
+        projectManager: E.lookup.personName(r.projectManagerPersonId),
+        decisionMaker: E.lookup.personName(r.decisionMakerPersonId),
+        externalParty: E.lookup.orgName(r.externalCounterpartyOrganizationId),
+        collaborators: [],
+        ceoRequired: r.ceoRequired,
+        ceoActionMode: r.ceoActionMode,
+        leverageClass: r.leverage.classification,
+        approvalClass: r.approvalClass,
+        delegable: r.delegable,
+        deadline: null,
+        valueAtStake: g.valueAtStake === undefined ? null : g.valueAtStake,
+        routingReason: r.reason,
+        requiredCapabilities: g.requiredCapabilities || [],
+        attributedTo: null, attributionOverridden: false,
+        interpreted: true, needsReview: false,
+        possibleDuplicateOf: null, duplicateSimilarity: null,
+        businessArea: g.businessArea || null
+      };
+    });
+    STATE.chosen[p.id] = { at: new Date().toISOString(), passed: false, tasks: tasks };
+    persist();
+    renderAll();
+    showView('today');   // the point is the work, not the list
+  }
+
   function renderBusiness() {
     var section = document.getElementById('b-business');
     var body = bodyOf('b-business');
@@ -1015,7 +1354,16 @@
       var o = el('div', 'openmo');
       o.appendChild(el('span', 'k', o_label(f.open)));
       o.appendChild(el('span', 'v', E.money(f.open.netSales) + ' revenue'));
-      o.appendChild(el('span', 'n', 'expenses not final until ' + f.open.closesOn));
+      // During the window between month end and the close, the newest closed
+      // month is two months back. Saying how long explains the gap rather than
+      // leaving it to feel like stale data.
+      var daysToClose = Math.ceil((Date.parse(f.open.closesOn) - Date.now()) / 86400000);
+      var closeNote = 'expenses not final until ' + f.open.closesOn;
+      if (daysToClose >= 0 && daysToClose <= 14) {
+        closeNote += ' · ' + (daysToClose === 0 ? 'closing today'
+          : daysToClose === 1 ? 'closes tomorrow' : 'closes in ' + daysToClose + ' days');
+      }
+      o.appendChild(el('span', 'n', closeNote));
       card.appendChild(o);
     }
 
@@ -1270,6 +1618,30 @@
   } catch (e) { /* storage blocked; system theme applies */ }
 
   document.getElementById('sync-btn').addEventListener('click', sync);
+
+  // --- views ---------------------------------------------------------------
+  // Three focused views rather than one long page: what to do now, everything
+  // outstanding, and what the company could choose to take on.
+  function showView(name) {
+    STATE.view = name;
+    ['today', 'queue', 'strategy'].forEach(function (v) {
+      var pane = document.getElementById('pane-' + v);
+      if (pane) pane.classList.toggle('on', v === name);
+    });
+    [].forEach.call(document.querySelectorAll('.view-btn'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-view') === name ? 'true' : 'false');
+    });
+    try { localStorage.setItem('cc-view', name); } catch (e) { /* private mode */ }
+  }
+
+  [].forEach.call(document.querySelectorAll('.view-btn'), function (b) {
+    b.addEventListener('click', function () { showView(b.getAttribute('data-view')); });
+  });
+  try {
+    var savedView = localStorage.getItem('cc-view');
+    if (savedView) STATE.view = savedView;
+  } catch (e) { /* storage blocked */ }
+  showView(STATE.view);
 
   // ---------------------------------------------------------------------------
   // Boot
