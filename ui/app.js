@@ -25,6 +25,7 @@
   // resolved for this viewer.
   var ZOOM = 'Zoom for Claude';
   var MS365 = 'ms365';
+  var SLACK = 'Slack';
 
   // ---------------------------------------------------------------------------
   // State. Embedded into the published HTML so corrections survive a reload.
@@ -50,7 +51,7 @@
     try { return JSON.parse(node.textContent); } catch (e) { return null; }
   })();
 
-  var VIEW = { tasks: [], feed: [], meetings: [], waiting: [], connectors: {}, live: [] };
+  var VIEW = { tasks: [], feed: [], meetings: [], waiting: [], connectors: {}, live: [], slack: [], slackRaw: null };
 
   /** Normalize a state task and a live-routed task into one render shape. */
   function fromState(t) {
@@ -289,7 +290,8 @@
     setConn(ZOOM, 'busy', 'Zoom');
 
     // Sections are independent: one failure must not blank the page.
-    var results = await Promise.allSettled([pullMail(), pullMeetings()]);
+    setConn(SLACK, 'busy', 'Slack');
+    var results = await Promise.allSettled([pullMail(), pullMeetings(), pullSlack()]);
 
     var codes = results
       .filter(function (r) { return r.status === 'rejected'; })
@@ -302,11 +304,12 @@
       var pd = describeError({ code: codes[0] }, 'Your connectors');
       notice(pd.kind, pd.title, pd.detail, pd.retry ? [{ label: 'Try again', onClick: sync }] : null);
     } else {
+      var servers = [[MS365, 'Outlook'], [ZOOM, 'Zoom'], [SLACK, 'Slack']];
       results.forEach(function (r, i) {
         if (r.status !== 'rejected') return;
-        var server = i === 0 ? MS365 : ZOOM;
-        var dd = describeError(r.reason, i === 0 ? 'Outlook' : 'Zoom');
-        setConn(server, 'error', i === 0 ? 'Outlook' : 'Zoom');
+        var pair = servers[i];
+        var dd = describeError(r.reason, pair[1]);
+        setConn(pair[0], 'error', pair[1]);
         notice(dd.kind, dd.title, dd.detail, dd.retry ? [{ label: 'Try again', onClick: sync }] : null);
       });
     }
@@ -379,6 +382,47 @@
     VIEW.feed = feed;
     VIEW.tasks = VIEW.tasks.filter(function (t) { return t.source !== 'Outlook'; }).concat(tasks);
     setConn(MS365, 'live', 'Outlook · ' + feed.filter(function (f) { return f.kept; }).length + '/' + feed.length);
+  }
+
+  /**
+   * Recent Slack activity.
+   *
+   * The connector answers with FORMATTED TEXT rather than structured messages,
+   * so this displays rather than interprets. Parsing is tolerant and falls back
+   * to showing the text as returned: a display panel is not worth breaking the
+   * page over, and Slack's real interpretive value happens in the sync run.
+   */
+  async function pullSlack() {
+    var since = new Date(Date.now() - 3 * 86400000);
+    var res = await call(SLACK, 'slack_search_public_and_private', {
+      query: 'after:' + since.toISOString().slice(0, 10),
+      sort: 'timestamp',
+      limit: 15,
+      include_context: false,
+      response_format: 'concise'
+    });
+
+    var payload = res.payload;
+    if (payload && typeof payload === 'object' && payload.results) payload = payload.results;
+    if (typeof payload !== 'string') { VIEW.slack = []; setConn(SLACK, 'live', 'Slack'); return; }
+
+    VIEW.slack = parseSlackResults(payload);
+    VIEW.slackRaw = VIEW.slack.length ? null : payload;
+    setConn(SLACK, 'live', 'Slack · ' + VIEW.slack.length);
+  }
+
+  /** "1. #channel - Author: text 2026-08-24 23:23:28 CDT" */
+  function parseSlackResults(text) {
+    var out = [];
+    var lines = text.split(/\n(?=\d+\.\s)/);
+    lines.forEach(function (chunk) {
+      var m = /^\d+\.\s+([\s\S]+?)\s-\s([^:]{1,60}):\s([\s\S]*?)\s(\d{4}-\d{2}-\d{2}[^\n]*)$/.exec(chunk.trim());
+      if (!m) return;
+      var body = m[3].replace(/<[^|>]*\|([^>]*)>/g, '$1').replace(/<([^>]*)>/g, '$1').trim();
+      if (!body) return;
+      out.push({ channel: m[1].trim(), author: m[2].trim(), text: body, at: m[4].trim() });
+    });
+    return out;
   }
 
   /** Receipts, payouts and shipping notices are records, not requests. */
@@ -537,6 +581,7 @@
     renderFeed();
     renderMeetings();
     renderWaiting();
+    renderSlack();
     renderTeam();
     renderProvenance();
   }
@@ -816,6 +861,41 @@
       });
     });
     body.appendChild(card);
+  }
+
+  function renderSlack() {
+    var section = document.getElementById('b-slack');
+    var body = bodyOf('b-slack');
+    clear(body);
+    var rows = VIEW.slack || [];
+    if (!rows.length && !VIEW.slackRaw) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    countOf('b-slack').textContent = String(rows.length || '');
+
+    var card = el('div', 'card');
+    if (!rows.length) {
+      var pre = el('div', 'm-items', String(VIEW.slackRaw).slice(0, 800));
+      pre.style.whiteSpace = 'pre-wrap';
+      card.appendChild(pre);
+    } else {
+      rows.slice(0, 10).forEach(function (m) {
+        var row = el('div', 'meeting');
+        var top = el('div', 'm-top');
+        top.appendChild(el('span', 'm-date mono', shortChannel(m.channel)));
+        top.appendChild(el('span', 'm-topic', m.author));
+        row.appendChild(top);
+        row.appendChild(el('div', 'm-items', m.text.slice(0, 170)));
+        card.appendChild(row);
+      });
+    }
+    body.appendChild(card);
+  }
+
+  function shortChannel(c) {
+    if (/^#/.test(c)) return c.length > 16 ? c.slice(0, 15) + '…' : c;
+    if (/^Group DM/i.test(c)) return 'group';
+    if (/^DM/i.test(c)) return 'dm';
+    return c.slice(0, 14);
   }
 
   function renderTeam() {

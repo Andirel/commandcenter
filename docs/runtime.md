@@ -70,12 +70,24 @@ tool-prefix segment with underscores read as spaces, which is what the page uses
 (`"Zoom for Claude"`, `"ms365"`). `listTools()` runs at boot so the UI adapts to
 what actually resolved for the viewer rather than assuming.
 
-Two shape facts learned from real responses, both handled in `ui/app.js`:
+Three shape facts learned from real responses, all handled in `ui/app.js`:
 
 - **ms365 mail search returns concatenated JSON objects**, not an array, so
   `result.payload` arrives as raw text. The page parses the object stream.
 - **The Zoom connector returns attributed markdown**, not the REST API's
   structured `next_steps`. See `src/normalization/zoom.ts`.
+- **The Slack connector returns formatted text**, not structured messages:
+  `{ results: "# Search Results…\n1. #channel - Author: text 2026-08-24 …" }`.
+
+That last one shapes where Slack is used. The page **displays** recent Slack
+activity but does not interpret it, and its parser falls back to showing the
+text as returned — a display panel is not worth breaking the page over. Slack's
+real value is interpretive (it is the only source that reliably confirms
+something is *done*), and that happens in the sync run, where a session reads
+it directly.
+
+Only read tools are called. `slack_send_message` and its relatives are not in
+the manifest and never will be while sending is disabled.
 
 Every connector failure is branched on its error **code** — `needs_reauth`
 prompts a reconnect, `server_not_connected` prompts adding it, `server_unavailable`

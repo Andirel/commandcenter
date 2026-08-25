@@ -327,7 +327,9 @@ export const CONFIG: SystemConfig = {
           "Do not limit routing based on CEO title.",
           "Optimize to protect attention without preventing hands-on ownership.",
           "CEO dependency is not the same as CEO ownership -- always state the mode."
-        ]
+        ],
+        "email": "adi@120life.com",
+        "slack_user_id": "UFAMJBSRL"
       },
       "paul": {
         "name": "Paul",
@@ -396,7 +398,8 @@ export const CONFIG: SystemConfig = {
           "Often appropriate for cross-functional execution and tracking.",
           "Consider as project manager even when a specialist owns the task.",
           "Do not overload indiscriminately -- weigh workload and complexity."
-        ]
+        ],
+        "slack_user_id": "U054X7JDN1Z"
       },
       "mike": {
         "name": "Mike",
@@ -412,7 +415,8 @@ export const CONFIG: SystemConfig = {
           "Michaelhammersley",
           "michaelhammersley",
           "Michael Hammersley",
-          "Mike Hammersley"
+          "Mike Hammersley",
+          "Michael Hammersley"
         ],
         "capabilities": {
           "operations": {
@@ -498,7 +502,9 @@ export const CONFIG: SystemConfig = {
         "notes": [
           "Do not classify as only operations or only technology.",
           "Adi may make the decision while Mike owns execution."
-        ]
+        ],
+        "email": "mike@120life.com",
+        "slack_user_id": "U01P8MKBM60"
       },
       "ira": {
         "name": "Ira",
@@ -531,7 +537,8 @@ export const CONFIG: SystemConfig = {
         "notes": [
           "Customer-service trends should generate business signals, not a task per ticket.",
           "Do not route customer-originated strategic decisions to Ira by default."
-        ]
+        ],
+        "email": "ira@120life.com"
       },
       "peter": {
         "name": "Peter",
@@ -543,7 +550,9 @@ export const CONFIG: SystemConfig = {
         "broad_generalist": false,
         "eligible_for_all_areas": false,
         "leverage_candidate": false,
-        "aliases": [],
+        "aliases": [
+          "Peter Levy"
+        ],
         "capabilities": {
           "accounts_payable": {
             "confidence": 0.95,
@@ -727,6 +736,24 @@ export const CONFIG: SystemConfig = {
           "Involved selectively, NOT the default podcast owner.",
           "Include only when correspondence indicates an interview needs her."
         ]
+      },
+      "rob": {
+        "name": "Rob",
+        "role": "Unknown",
+        "internal": true,
+        "discovery_status": "discovered",
+        "importance": 2,
+        "broad_generalist": false,
+        "eligible_for_all_areas": false,
+        "leverage_candidate": false,
+        "aliases": [],
+        "capabilities": {},
+        "collaborates_with": [],
+        "notes": [
+          "Discovered in the Slack directory on 2026-08-25; function not yet established."
+        ],
+        "email": "rob@120life.com",
+        "slack_user_id": "U0A3XU3EXKP"
       }
     }
   },

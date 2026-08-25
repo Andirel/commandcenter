@@ -23,6 +23,8 @@ people:
   adi:
     name: "Adi"
     role: "CEO"
+    email: "adi@120life.com"
+    slack_user_id: "UFAMJBSRL"
     # Display names seen in Zoom attendee lists and AI Companion attribution.
     aliases:
       - "Adi Malik"
@@ -61,6 +63,7 @@ people:
   paul:
     name: "Paul"
     role: "Executive Assistant / Project Manager"
+    slack_user_id: "U054X7JDN1Z"
     aliases: []
     internal: true
     discovery_status: confirmed
@@ -87,12 +90,15 @@ people:
   mike:
     name: "Mike"
     role: "COO / CTO"
+    email: "mike@120life.com"
+    slack_user_id: "U01P8MKBM60"
     # Display names seen in Zoom attendee lists and AI Companion attribution.
     aliases:
       - "Michaelhammersley"
       - "michaelhammersley"
       - "Michael Hammersley"
       - "Mike Hammersley"
+      - "Michael Hammersley"
     internal: true
     discovery_status: confirmed
     importance: 5
@@ -119,6 +125,7 @@ people:
   ira:
     name: "Ira"
     role: "Customer Service"
+    email: "ira@120life.com"
     # Display names seen in Zoom attendee lists and AI Companion attribution.
     aliases:
       - "Ira Antelis"
@@ -136,7 +143,8 @@ people:
   peter:
     name: "Peter"
     role: "Accounts Payable"
-    aliases: []
+    aliases:
+      - "Peter Levy"
     internal: true
     discovery_status: confirmed
     importance: 3
@@ -224,3 +232,19 @@ people:
     notes:
       - "Involved selectively, NOT the default podcast owner."
       - "Include only when correspondence indicates an interview needs her."
+
+  rob:
+    name: "Rob"
+    role: "Unknown"
+    aliases: []
+    email: "rob@120life.com"
+    slack_user_id: "U0A3XU3EXKP"
+    internal: true
+    # Seen once, in the Slack directory. Authority is earned through repeated
+    # evidence, so no capabilities are asserted and nothing routes here until
+    # correspondence shows what he actually handles.
+    discovery_status: discovered
+    importance: 2
+    capabilities: {}
+    notes:
+      - "Discovered in the Slack directory on 2026-08-25; function not yet established."
