@@ -46,9 +46,21 @@ you open it to work.
 **A Claude session** is for anything ad-hoc: "what did we commit to RadioActive
 last month?" It has the same connectors and can run the engine from the repo.
 
-**n8n** is now needed for exactly one thing: work that must happen while nobody
-is looking — the 7am brief landing in Slack before you open anything. That is
-Phase 4+, and it is the only place separate credentials are still required.
+**A scheduled Routine** covers the unattended case — work that must happen
+while nobody is looking. `docs/morning-sync-runbook.md` is the procedure it
+follows; the Routine's prompt merely points at that file, so the process is
+corrected with a commit rather than by editing a trigger.
+
+`120/Life morning sync` — weekdays 07:00 America/Chicago (`0 12 * * 1-5` UTC),
+fresh session per firing, push notification on completion.
+
+A fresh session per firing (rather than resuming one conversation) is
+deliberate: a self-bound Routine accumulates context indefinitely and drifts.
+Each morning starts clean and reads the runbook.
+
+**n8n** is no longer required for any phase. It remains an option if event-driven
+ingestion is ever wanted — a webhook the moment mail arrives, rather than a
+scheduled sweep — but nothing currently needs it.
 
 ## Honest limits of the page runtime
 
