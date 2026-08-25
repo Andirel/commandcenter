@@ -1,0 +1,101 @@
+# Runtime architecture
+
+**This supersedes the n8n-first plan in `architecture.md` §1 for phases 1–5.**
+That plan assumed we would provision credentials for each source. We don't need
+to: 120/Life already has Outlook, Slack, Zoom, Drive, Finaloop, Klaviyo, Gusto,
+Shopify and Notion connected to Claude. The connectors *are* the integration
+layer.
+
+## What changed, and why it matters
+
+| | Original plan | Now |
+|---|---|---|
+| Auth | Entra app registration, Zoom S2S OAuth, Slack bot token | The connectors you already authorized |
+| Ingestion | n8n workflows calling APIs | The page calls connectors directly, with your credentials |
+| State | Supabase from day one | Embedded in the published page; Supabase when volume needs it |
+| Infra to stand up | Postgres + n8n instance | None |
+| Time to first use | Days | Now |
+
+The engine is unchanged. Routing, priority, dedup and normalization are the same
+TypeScript the test suite covers — `scripts/build-browser-engine.ts` compiles it
+into the page, with `config/*.yaml` frozen to JSON at build time so the UI cannot
+drift from committed configuration.
+
+## The three runtimes
+
+```
+                    ┌──────────────────────────────────┐
+                    │  ENGINE  (src/, 160 tests)       │
+                    │  routing · priority · dedup      │
+                    └───────────────┬──────────────────┘
+             ┌──────────────────────┼──────────────────────┐
+             ▼                      ▼                      ▼
+   ┌──────────────────┐  ┌────────────────────┐  ┌──────────────────┐
+   │ COMMAND CENTER   │  │ CLAUDE SESSION     │  │ n8n (later)      │
+   │ artifact page    │  │ this CLI / desktop │  │ unattended only  │
+   │                  │  │                    │  │                  │
+   │ connectors via   │  │ connectors via MCP │  │ needs its own    │
+   │ mcp capability   │  │ tools directly     │  │ credentials      │
+   │ opens → syncs    │  │ ad-hoc analysis    │  │ nightly brief    │
+   └──────────────────┘  └────────────────────┘  └──────────────────┘
+```
+
+**The page** is the operating surface. It runs only while open, which is fine —
+you open it to work.
+
+**A Claude session** is for anything ad-hoc: "what did we commit to RadioActive
+last month?" It has the same connectors and can run the engine from the repo.
+
+**n8n** is now needed for exactly one thing: work that must happen while nobody
+is looking — the 7am brief landing in Slack before you open anything. That is
+Phase 4+, and it is the only place separate credentials are still required.
+
+## Honest limits of the page runtime
+
+- **It runs only when open.** No background ingestion, no overnight brief.
+- **State lives in the published page**, not a database. Fine for tens of items;
+  wrong for thousands. Supabase remains the destination — `database/migrations/`
+  is ready and unchanged.
+- **No model call happens in the page.** Routing runs on subject lines and
+  metadata, so it is deliberately conservative: it will under-classify an email
+  whose meaning is buried in the body. Full interpretation needs a Claude session
+  or a server-side call, which is the next increment.
+- **Corrections are local to the artifact** until exported back into
+  `config/people.yaml` as evidence.
+
+## Connector notes
+
+`server` is the connector's **display name**. The runtime also accepts the
+tool-prefix segment with underscores read as spaces, which is what the page uses
+(`"Zoom for Claude"`, `"ms365"`). `listTools()` runs at boot so the UI adapts to
+what actually resolved for the viewer rather than assuming.
+
+Two shape facts learned from real responses, both handled in `ui/app.js`:
+
+- **ms365 mail search returns concatenated JSON objects**, not an array, so
+  `result.payload` arrives as raw text. The page parses the object stream.
+- **The Zoom connector returns attributed markdown**, not the REST API's
+  structured `next_steps`. See `src/normalization/zoom.ts`.
+
+Every connector failure is branched on its error **code** — `needs_reauth`
+prompts a reconnect, `server_not_connected` prompts adding it, `server_unavailable`
+offers a retry. Collapsing these into one banner would hide the single action
+that fixes the page.
+
+## Claude for Chrome
+
+Browser control is the execution path for systems with **no API and no
+connector** — retailer portals, vendor onboarding sites, carrier dashboards.
+That is exactly the work the leverage engine classifies `PAUL_CAN_OWN`.
+
+It is not part of the read path and should not be: reading mail through a browser
+when a connector exists is slower and more fragile. The natural first use is
+retailer onboarding portals, once the routing on those tasks is trusted.
+
+## What to build next, in order
+
+1. **Interpretation.** Routing on subject lines is the biggest quality gap.
+2. **Commitment extraction from Sent Items.** The waiting-on register is the
+   highest-value thing the page cannot yet populate honestly.
+3. **Supabase**, when the working set outgrows the page.
+4. **n8n**, only for the unattended morning brief.
