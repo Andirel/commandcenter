@@ -71,13 +71,20 @@ export function assessLeverage(input: LeverageInput): LeverageAssessment {
     }
   }
 
-  // An explicit hint wins over inference.
+  // Past the soft cap the coordinator can still take work, but the suggestion
+  // is made with lower confidence and says so.
+  const atSoftCap = load.openTasks >= rules.max_open_tasks_soft;
+
+  // An explicit hint wins over inference -- but not over workload. A hint says
+  // what KIND of work this is, not that the person has room for it.
   const hinted = input.hints.find((h) => h.leverage_hint)?.leverage_hint;
   if (hinted && !specialistRequired) {
     return {
       classification: hinted,
-      confidence: 0.85,
-      reason: `${person.name} can take this on: it is coordination work, not specialist or CEO work.`,
+      confidence: atSoftCap ? 0.65 : 0.85,
+      reason: atSoftCap
+        ? `${person.name} can take this on, but is already carrying ${load.openTasks} open items.`
+        : `${person.name} can take this on: it is coordination work, not specialist or CEO work.`,
       estimatedCeoHoursSaved: estimateHoursSaved(req, hinted),
       suggestedHandoff: person.slug,
     };
@@ -154,11 +161,10 @@ export function assessLeverage(input: LeverageInput): LeverageAssessment {
         suggestedHandoff: person.slug,
       };
     }
-    const soft = load.openTasks >= rules.max_open_tasks_soft;
     return {
       classification,
-      confidence: soft ? 0.65 : 0.85,
-      reason: soft
+      confidence: atSoftCap ? 0.65 : 0.85,
+      reason: atSoftCap
         ? `${person.name} can own this, but is already carrying ${load.openTasks} open items.`
         : `${person.name} can own this end-to-end; it needs coordination, not specialist expertise.`,
       estimatedCeoHoursSaved: hours,

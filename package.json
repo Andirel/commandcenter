@@ -4,7 +4,9 @@
   "private": true,
   "description": "120/Life AI Operating System — operational intelligence, routing, and attention allocation",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -16,6 +18,8 @@
     "routing:explain": "tsx scripts/explain-routing.ts"
   },
   "dependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0",
     "yaml": "^2.6.1",
     "zod": "^3.24.1"
   },

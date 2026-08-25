@@ -111,24 +111,32 @@ export function diffRankings(
  */
 function explainChange(before: RankedTask, after: RankedTask, rankDelta: number): string {
   const beforeByLabel = new Map(before.result.components.map((c) => [c.label, c]));
-  const gains: string[] = [];
+  const gains: Array<{ magnitude: number; text: string }> = [];
 
   for (const comp of after.result.components) {
     const prior = beforeByLabel.get(comp.label);
     const delta = comp.value - (prior?.value ?? 0);
     if (Math.abs(delta) < 0.5) continue;
-    gains.push(comp.explanation);
+    gains.push({ magnitude: Math.abs(delta), text: comp.explanation });
   }
 
   for (const comp of before.result.components) {
     if (after.result.components.some((c) => c.label === comp.label)) continue;
     if (Math.abs(comp.value) < 0.5) continue;
-    gains.push(`no longer ${comp.explanation}`);
+    gains.push({ magnitude: Math.abs(comp.value), text: `no longer ${comp.explanation}` });
   }
+
+  // Report the LARGEST movements, not whichever components happen to be
+  // declared first. "moved up because impact 5/5" is a weaker explanation than
+  // "moved up because it now unblocks 3 other tasks" when the latter is what
+  // actually changed.
+  gains.sort((a, b) => b.magnitude - a.magnitude);
 
   const direction = rankDelta > 0 ? 'moved up' : rankDelta < 0 ? 'moved down' : 'changed score';
   const movement = before.rank !== after.rank ? `${direction} #${before.rank} → #${after.rank}` : direction;
-  const cause = gains.length ? gains.slice(0, 2).join('; ') : after.result.drivers[0] ?? 'scoring inputs changed';
+  const cause = gains.length
+    ? gains.slice(0, 2).map((g) => g.text).join('; ')
+    : after.result.drivers[0] ?? 'scoring inputs changed';
   return `${movement} because ${cause}.`;
 }
 

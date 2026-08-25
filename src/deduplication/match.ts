@@ -117,19 +117,22 @@ export function matchTask(
     };
   }
 
+  // Distinguish "the same work continuing" from "the work has come back".
+  // A match against a CLOSED task means a recurrence, which is NEW work --
+  // merging into it would lose the previous instance's record. This is checked
+  // before the thresholds because it applies across the whole matching band,
+  // not only above the merge bar.
+  if (best.task.status === 'completed' || best.task.status === 'superseded') {
+    return {
+      decision: 'NEEDS_REVIEW',
+      matchedTask: best.task,
+      similarity: best.similarity,
+      reason: `Closely matches "${best.task.title}", which is already closed; this may be a recurrence rather than a duplicate.`,
+      candidates,
+    };
+  }
+
   if (best.similarity >= MERGE_THRESHOLD) {
-    // Above the bar, but still distinguish "the same work continuing" from
-    // "two records of the same work". A superseded/completed match means the
-    // activity has come back, which is new work, not a merge.
-    if (best.task.status === 'completed' || best.task.status === 'superseded') {
-      return {
-        decision: 'NEEDS_REVIEW',
-        matchedTask: best.task,
-        similarity: best.similarity,
-        reason: 'Closely matches a task that is already closed; this may be a recurrence rather than a duplicate.',
-        candidates,
-      };
-    }
     return {
       decision: 'UPDATE_EXISTING',
       matchedTask: best.task,
