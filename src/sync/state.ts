@@ -94,6 +94,37 @@ export const StateMeeting = z.object({
 });
 export type StateMeeting = z.infer<typeof StateMeeting>;
 
+export const StateSignal = z.object({
+  signalType: z.string(),
+  businessArea: z.string().nullable().default(null),
+  severity: z.number().int().min(1).max(10),
+  summary: z.string(),
+  evidence: z.string().nullable().default(null),
+  recommendedAction: z.string().nullable().default(null),
+  likelyPeople: z.array(z.string()).default([]),
+  valueAtStake: z.number().nullable().default(null),
+});
+export type StateSignal = z.infer<typeof StateSignal>;
+
+/** Headline figures the Business panel renders. */
+export const StateFinance = z.object({
+  period: z.string(),
+  periodComplete: z.boolean(),
+  daysElapsed: z.number().int(),
+  netSales: z.number(),
+  netProfit: z.number(),
+  paidAds: z.number(),
+  priorNetProfit: z.number().nullable().default(null),
+  priorNetSales: z.number().nullable().default(null),
+  priorDailyNetSales: z.number().nullable().default(null),
+  dailyNetSales: z.number().nullable().default(null),
+  /** Projected from the daily rate; only meaningful while the period is open. */
+  projectedNetProfit: z.number().nullable().default(null),
+  dailySales: z.array(z.object({ day: z.string(), value: z.number() })).default([]),
+  salesChangeRatio: z.number().nullable().default(null),
+}).nullable();
+export type StateFinance = z.infer<typeof StateFinance>;
+
 export const CommandCenterState = z.object({
   version: z.literal(1),
   generatedAt: z.string(),
@@ -105,6 +136,8 @@ export const CommandCenterState = z.object({
   commitments: z.array(StateCommitment).default([]),
   triage: z.array(StateTriageRow).default([]),
   meetings: z.array(StateMeeting).default([]),
+  signals: z.array(StateSignal).default([]),
+  finance: StateFinance.default(null),
 
   counts: z.object({
     mailSeen: z.number().int().default(0),

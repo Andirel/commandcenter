@@ -29,12 +29,15 @@ import { RoutingRequest } from '../schemas/routing.js';
 import { Task as TaskSchema } from '../schemas/tasks.js';
 import type { StageContext, InterpretationRecord } from '../ai/stages.js';
 import { interpretEvent, triage, teamContext, capabilityContext } from '../ai/stages.js';
-import { CommandCenterState, StateTask, type StateCommitment, type StateMeeting } from './state.js';
+import { CommandCenterState, StateTask, type StateCommitment, type StateMeeting, type StateSignal, type StateFinance } from './state.js';
 
 export interface SyncInput {
   events: CanonicalEvent[];
   meetings?: StateMeeting[];
   commitments?: StateCommitment[];
+  /** Derived by src/signals/*; the loop consumes conclusions, not raw ledgers. */
+  signals?: StateSignal[];
+  finance?: StateFinance;
   config: SystemConfig;
   team: TeamModel;
   /** Omit to run metadata-only. */
@@ -293,6 +296,8 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
     commitments: input.commitments ?? [],
     triage: triageRows,
     meetings: input.meetings ?? [],
+    signals: input.signals ?? [],
+    finance: input.finance ?? null,
     counts: {
       mailSeen,
       mailKept,

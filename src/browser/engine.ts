@@ -22,6 +22,8 @@ import { normalizeSlackMessage, isSlackNoise } from '../normalization/slack.js';
 import { composeDailyBrief } from '../brief/daily.js';
 import { renderDailyBrief } from '../brief/render.js';
 import { findDueFollowUps } from '../followup/engine.js';
+import { readPnl, financeSignals, findNode, money, pct } from '../signals/finance.js';
+import { parseSalesRows, salesTrend, commerceSignals } from '../signals/commerce.js';
 import { RoutingRequest } from '../schemas/routing.js';
 import { Task } from '../schemas/tasks.js';
 
@@ -38,6 +40,8 @@ export {
   normalizeZoomAssets, parseZoomSummaryMarkdown,
   normalizeSlackMessage, isSlackNoise,
   composeDailyBrief, renderDailyBrief, findDueFollowUps,
+  readPnl, financeSignals, findNode, money, pct,
+  parseSalesRows, salesTrend, commerceSignals,
   RoutingRequest, Task,
 };
 

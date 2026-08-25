@@ -1,0 +1,31 @@
+[
+  {"name":"Gross Profit","timeLabels":["2026-06","2026-07","2026-08"],
+   "amount":503563.95,"amounts":[187010.59,178225.19,138328.17],
+   "children":[
+     {"name":"Net Sales","amount":1011553.32,"amounts":[378055.04,356984.37,276513.91],"children":[]}
+   ]},
+  {"name":"Net Operating Profit","timeLabels":["2026-06","2026-07","2026-08"],
+   "amount":-22289.62,"amounts":[-12062.03,32728.24,-42955.83],
+   "children":[
+     {"name":"Operating Expenses","children":[
+       {"name":"Payroll","amount":-70716.75,"amounts":[-35980.56,-23314.84,-11421.35],"children":[]},
+       {"name":"Sales & marketing (S&M)","children":[
+         {"name":"Variable advertising & marketing","children":[
+           {"name":"Paid online ads","amount":-200389.81,"amounts":[-51923.35,-65976.15,-82490.31],"children":[]}
+         ]}
+       ]}
+     ]}
+   ]},
+  {"name":"Net Profit before taxes","timeLabels":["2026-06","2026-07","2026-08"],
+   "amount":-30655.96,"amounts":[-11109.67,33648.42,-53194.71],
+   "children":[
+     {"name":"Other Income & Expenses","children":[
+       {"name":"Other expenses","children":[
+         {"accountName":"Uncategorized transactions - money spent","name":"Uncategorized transactions - money spent",
+          "amount":-10244.45,"amounts":[0,0,-10244.45],"children":[]}
+       ]}
+     ]}
+   ]},
+  {"name":"Net Profit","timeLabels":["2026-06","2026-07","2026-08"],
+   "amount":-30655.96,"amounts":[-11109.67,33648.42,-53194.71],"children":[]}
+]

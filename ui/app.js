@@ -26,6 +26,8 @@
   var ZOOM = 'Zoom for Claude';
   var MS365 = 'ms365';
   var SLACK = 'Slack';
+  var FINALOOP = 'My Finaloop MCP';
+  var SHOPIFY = 'Shopify';
 
   // ---------------------------------------------------------------------------
   // State. Embedded into the published HTML so corrections survive a reload.
@@ -51,7 +53,7 @@
     try { return JSON.parse(node.textContent); } catch (e) { return null; }
   })();
 
-  var VIEW = { tasks: [], feed: [], meetings: [], waiting: [], connectors: {}, live: [], slack: [], slackRaw: null };
+  var VIEW = { tasks: [], feed: [], meetings: [], waiting: [], connectors: {}, live: [], slack: [], slackRaw: null, finance: null, signals: [] };
 
   /** Normalize a state task and a live-routed task into one render shape. */
   function fromState(t) {
@@ -291,7 +293,8 @@
 
     // Sections are independent: one failure must not blank the page.
     setConn(SLACK, 'busy', 'Slack');
-    var results = await Promise.allSettled([pullMail(), pullMeetings(), pullSlack()]);
+    setConn(FINALOOP, 'busy', 'Finaloop');
+    var results = await Promise.allSettled([pullMail(), pullMeetings(), pullSlack(), pullBusiness()]);
 
     var codes = results
       .filter(function (r) { return r.status === 'rejected'; })
@@ -304,7 +307,7 @@
       var pd = describeError({ code: codes[0] }, 'Your connectors');
       notice(pd.kind, pd.title, pd.detail, pd.retry ? [{ label: 'Try again', onClick: sync }] : null);
     } else {
-      var servers = [[MS365, 'Outlook'], [ZOOM, 'Zoom'], [SLACK, 'Slack']];
+      var servers = [[MS365, 'Outlook'], [ZOOM, 'Zoom'], [SLACK, 'Slack'], [FINALOOP, 'Finaloop']];
       results.forEach(function (r, i) {
         if (r.status !== 'rejected') return;
         var pair = servers[i];
@@ -423,6 +426,87 @@
       out.push({ channel: m[1].trim(), author: m[2].trim(), text: body, at: m[4].trim() });
     });
     return out;
+  }
+
+  /**
+   * Financial and commerce position.
+   *
+   * Two different bases, deliberately not mixed: Finaloop reports BOOKED
+   * accounting figures, Shopify reports order-level activity. Blending them
+   * produces a number that is true on neither basis.
+   *
+   * Shopify is optional here — its analytics API rate-limits, and a missing
+   * sparkline must not cost the financial headline.
+   */
+  async function pullBusiness() {
+    var companies = await call(FINALOOP, 'list_my_companies', {});
+    var payload = companies.payload;
+    if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch (e) { payload = null; } }
+    var company = payload && payload.rows && payload.rows[0];
+    if (!company) { setConn(FINALOOP, 'warn', 'Finaloop · no company'); return; }
+
+    var now = new Date();
+    var start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
+    var end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+
+    var pnlRes = await call(FINALOOP, 'get_profit_and_loss', {
+      companyId: company.id,
+      startDate: iso(start), endDate: iso(end),
+      accountingMethod: company.accountingMethod || 'accrual',
+      timeRangeGroups: 'month',
+      totalsOnly: true
+    });
+    var tree = pnlRes.payload;
+    if (typeof tree === 'string') { try { tree = JSON.parse(tree); } catch (e) { tree = null; } }
+    if (!Array.isArray(tree)) { setConn(FINALOOP, 'warn', 'Finaloop · unreadable'); return; }
+
+    var snap = E.readPnl(tree, now);
+    var i = snap.periods.length - 1;
+    if (i < 0) { setConn(FINALOOP, 'warn', 'Finaloop · empty'); return; }
+    var period = snap.periods[i];
+
+    VIEW.finance = {
+      period: period.label,
+      periodComplete: period.complete,
+      daysElapsed: period.days,
+      netSales: snap.netSales[i] || 0,
+      netProfit: snap.netProfit[i] || 0,
+      paidAds: snap.paidAds[i] || 0,
+      priorNetProfit: i > 0 ? snap.netProfit[i - 1] : null,
+      priorNetSales: i > 0 ? snap.netSales[i - 1] : null,
+      priorDailyNetSales: i > 0 ? snap.dailyNetSales[i - 1] : null,
+      dailyNetSales: snap.dailyNetSales[i],
+      projectedNetProfit: period.complete ? null : snap.dailyNetProfit[i] * daysInMonth(period.label),
+      dailySales: [],
+      salesChangeRatio: null
+    };
+    VIEW.signals = E.financeSignals(snap);
+    setConn(FINALOOP, 'live', 'Finaloop');
+
+    // Sparkline is a bonus, never a dependency.
+    try {
+      var salesRes = await call(SHOPIFY, 'run-analytics-query', {
+        query: 'FROM sales SHOW total_sales, orders, average_order_value TIMESERIES day SINCE -21d UNTIL today'
+      });
+      var sp = salesRes.payload;
+      if (typeof sp === 'string') { try { sp = JSON.parse(sp); } catch (e) { sp = null; } }
+      if (sp && sp.rows && sp.rows.length) {
+        var trend = E.salesTrend(E.parseSalesRows(sp));
+        VIEW.finance.dailySales = trend.complete.map(function (d) { return { day: d.day, value: d.totalSales }; });
+        VIEW.finance.salesChangeRatio = trend.changeRatio;
+        VIEW.signals = VIEW.signals.concat(E.commerceSignals(trend));
+        setConn(SHOPIFY, 'live', 'Shopify');
+      }
+    } catch (e) {
+      // Rate limits here are routine; the financial headline still stands.
+      setConn(SHOPIFY, 'warn', 'Shopify · unavailable');
+    }
+  }
+
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  function daysInMonth(label) {
+    var p = label.split('-');
+    return new Date(Date.UTC(Number(p[0]), Number(p[1]), 0)).getUTCDate();
   }
 
   /** Receipts, payouts and shipping notices are records, not requests. */
@@ -581,6 +665,7 @@
     renderFeed();
     renderMeetings();
     renderWaiting();
+    renderBusiness();
     renderSlack();
     renderTeam();
     renderProvenance();
@@ -861,6 +946,176 @@
       });
     });
     body.appendChild(card);
+  }
+
+  /**
+   * The Business panel.
+   *
+   * Leads with the one number that matters — is the period making money — then
+   * the movement that explains it, then only signals material enough to act on.
+   */
+  function renderBusiness() {
+    var section = document.getElementById('b-business');
+    var body = bodyOf('b-business');
+    clear(body);
+
+    var f = VIEW.finance || (DATA && DATA.finance) || null;
+    var signals = VIEW.signals.length ? VIEW.signals : ((DATA && DATA.signals) || []);
+    if (!f && !signals.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    var note = section.querySelector('.note');
+    if (f) {
+      note.textContent = f.periodComplete
+        ? f.period
+        : f.period + ' · ' + f.daysElapsed + ' days in';
+    }
+
+    var card = el('div', 'card');
+
+    if (f) {
+      var stats = el('div', 'stats');
+      stats.appendChild(stat('Net profit', E.money(f.netProfit),
+        f.periodComplete ? null : 'run-rate ' + E.money(f.projectedNetProfit || 0),
+        f.netProfit < 0 ? 'neg' : 'pos'));
+      // Compared per DAY, because the running period is short of a full month
+      // and a raw month-over-month figure would invent a collapse.
+      stats.appendChild(stat('Net sales', E.money(f.netSales),
+        f.priorDailyNetSales && f.dailyNetSales
+          ? perDayDelta(f.dailyNetSales, f.priorDailyNetSales) + ' per day vs ' + priorLabel(f.period)
+          : null));
+      stats.appendChild(stat('Paid ads', E.money(f.paidAds), 'same period'));
+      stats.appendChild(stat('Daily sales', f.dailySales.length
+        ? E.money(avgOf(f.dailySales)) : '—',
+        f.salesChangeRatio !== null
+          ? (f.salesChangeRatio >= 0 ? '+' : '−') + E.pct(f.salesChangeRatio) + ' vs prior week'
+          : 'last 7 complete days'));
+      card.appendChild(stats);
+
+      if (f.dailySales.length >= 4) card.appendChild(sparkline(f.dailySales));
+    }
+
+    signals.slice(0, 4).forEach(function (sg) {
+      var row = el('div', 'sig');
+      var top = el('div', 'sig-top');
+      var dot = el('span', 'sev');
+      dot.setAttribute('data-s', sg.severity >= 7 ? 'high' : sg.severity >= 5 ? 'mid' : 'low');
+      top.appendChild(dot);
+      top.appendChild(el('span', 'sig-sum', sg.summary));
+      row.appendChild(top);
+      if (sg.recommendedAction) row.appendChild(el('div', 'sig-ev', sg.recommendedAction));
+      if (sg.likelyPeople && sg.likelyPeople.length) {
+        row.appendChild(el('div', 'sig-who', 'Likely: ' + sg.likelyPeople.join(', ')));
+      }
+      card.appendChild(row);
+    });
+
+    body.appendChild(card);
+    countOf('b-business').textContent = signals.length ? String(signals.length) : '';
+  }
+
+  function stat(label, value, sub, sign) {
+    var d = el('div', 'stat');
+    d.appendChild(el('div', 'k', label));
+    var v = el('div', 'v', value);
+    if (sign) v.setAttribute('data-sign', sign);
+    d.appendChild(v);
+    if (sub) d.appendChild(el('div', 's', sub));
+    return d;
+  }
+
+  function perDayDelta(now, prior) {
+    if (!prior) return '';
+    var r = (now - prior) / prior;
+    if (Math.abs(r) < 0.02) return 'flat';
+    return (r > 0 ? '+' : '−') + E.pct(r);
+  }
+
+  function priorLabel(period) {
+    var p = period.split('-');
+    var d = new Date(Date.UTC(Number(p[0]), Number(p[1]) - 2, 1));
+    return d.toISOString().slice(0, 7);
+  }
+
+  function avgOf(points) {
+    var last = points.slice(-7);
+    if (!last.length) return 0;
+    return last.reduce(function (s, p) { return s + p.value; }, 0) / last.length;
+  }
+
+  /**
+   * Daily sales sparkline.
+   *
+   * One series, so no legend — the caption names it. Today is excluded upstream
+   * because a morning read of a partial day looks like a crash. 2px line, soft
+   * area fill, emphasized final point, hover for the exact day.
+   */
+  function sparkline(points) {
+    var W = 260, H = 46, PAD = 3;
+    var wrap = el('div', 'spark');
+    var values = points.map(function (p) { return p.value; });
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var span = (max - min) || 1;
+
+    var x = function (i) { return PAD + (i * (W - PAD * 2)) / Math.max(1, points.length - 1); };
+    var y = function (v) { return H - PAD - ((v - min) / span) * (H - PAD * 2); };
+
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Daily sales, last ' + points.length + ' complete days');
+
+    var line = points.map(function (p, i) { return (i ? 'L' : 'M') + x(i) + ' ' + y(p.value); }).join(' ');
+
+    var area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    area.setAttribute('d', line + ' L' + x(points.length - 1) + ' ' + (H - PAD) + ' L' + x(0) + ' ' + (H - PAD) + ' Z');
+    area.setAttribute('fill', 'var(--accent)');
+    area.setAttribute('opacity', '0.10');
+    svg.appendChild(area);
+
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', line);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'var(--accent)');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke-linejoin', 'round');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(path);
+
+    var lastIdx = points.length - 1;
+    var end = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    end.setAttribute('cx', String(x(lastIdx)));
+    end.setAttribute('cy', String(y(points[lastIdx].value)));
+    end.setAttribute('r', '3');
+    end.setAttribute('fill', 'var(--accent)');
+    end.setAttribute('stroke', 'var(--surface)');
+    end.setAttribute('stroke-width', '2');
+    svg.appendChild(end);
+
+    wrap.appendChild(svg);
+
+    var cap = el('div', 'cap', 'Daily sales · last ' + points.length + ' complete days');
+    wrap.appendChild(cap);
+
+    // Hover layer: an SVG chart on a page is interactive by default.
+    var tip = el('div', 'spark-tip');
+    wrap.appendChild(tip);
+    svg.addEventListener('mousemove', function (ev) {
+      var box = svg.getBoundingClientRect();
+      var ratio = (ev.clientX - box.left) / box.width;
+      var i = Math.max(0, Math.min(points.length - 1, Math.round(ratio * (points.length - 1))));
+      var p = points[i];
+      tip.textContent = p.day.slice(5) + '  ' + E.money(p.value);
+      tip.style.left = (x(i) / W * 100) + '%';
+      tip.style.top = (y(p.value) / H * box.height) + 'px';
+      tip.setAttribute('data-on', '1');
+    });
+    svg.addEventListener('mouseleave', function () { tip.removeAttribute('data-on'); });
+
+    return wrap;
   }
 
   function renderSlack() {

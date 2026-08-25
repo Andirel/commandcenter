@@ -123,3 +123,52 @@ retailer onboarding portals, once the routing on those tasks is trusted.
    highest-value thing the page cannot yet populate honestly.
 3. **Supabase**, when the working set outgrows the page.
 4. **n8n**, only for the unattended morning brief.
+
+
+---
+
+## What earns a place in the Command Center
+
+The test for any connector is: **would seeing this change what Adi does in the
+next hour?** Data that fails that test makes the page longer and less useful.
+
+**Finaloop — yes.** Period profitability is the single most important business
+fact available, and it is exactly what the board is focused on. Consumed as
+conclusions (`get_profit_and_loss`), never rebuilt.
+
+**Shopify — yes.** Order-level sales answer "what is happening now" where
+Finaloop answers "did we make money". Its analytics API rate-limits, so it is
+treated as optional: a missing sparkline never costs the financial headline.
+
+**Slack — yes, for display.** The connector returns formatted text, so the page
+shows it and the sync interprets it.
+
+**Klaviyo — no.** Email marketing runs at roughly $1.5k a month against $82k of
+paid ads, and the connector's tools are for building and editing campaigns
+rather than answering a decision. It would be daily noise. The `BusinessSignal`
+interface stays open, so a specific email signal can feed in later if one proves
+decision-worthy — but a panel would not.
+
+**Gusto — no.** Payroll administration is not a daily attention-allocation
+input, and compensation data is deliberately out of scope (`docs/security.md`).
+
+### Two bases, never mixed
+
+Finaloop reports **booked accounting figures**; Shopify reports **order-level
+activity**. They legitimately differ. Blending them produces a number that is
+true on neither basis, so the panel keeps them in separate tiles.
+
+### The partial-month rule
+
+The running month is always incomplete. Comparing 24 days of August against 31
+of July shows a 23% sales "collapse" that is really six missing days. Every
+comparison runs on a **daily rate**, and any figure projected from an incomplete
+period is labelled a run-rate. `tests/finance-signals.test.ts` defends this
+directly — a brief that cries wolf once is never read carefully again.
+
+### Signals move the queue
+
+Signals are not decoration. They feed `config/priority-rules.yaml` →
+`signal_multipliers` and `compound_rules`, which is how a cash risk coinciding
+with an inventory risk raises the production task on its own. That
+cross-functional lift is the reason signals exist at all.
