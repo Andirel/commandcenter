@@ -1702,6 +1702,7 @@
     renderMoney(f);
     renderFunnel(f);
     renderEmail(f);
+    renderStock(f);
     renderStandout(signals);
   }
 
@@ -1800,6 +1801,61 @@
   }
 
   /** Flows ranked by revenue per recipient — the only measure that says "worth sending". */
+  /**
+   * Stock, and the catalogue it is counted against.
+   *
+   * Defects lead, because they are the half somebody can act on this morning.
+   * Cover follows, and is usually short — a store that sells past zero has
+   * quantities that count oversold units rather than remaining ones, and no
+   * arithmetic recovers a stock level from that. Saying so plainly is worth
+   * more than an empty table with a reassuring heading.
+   */
+  function renderStock(f) {
+    var section = document.getElementById('n-stock');
+    var body = bodyOf('n-stock');
+    clear(body);
+    var inv = f && f.inventory;
+    if (!inv) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    countOf('n-stock').textContent = inv.defects.length ? String(inv.defects.length) : '';
+    section.querySelector('.note').textContent = inv.variants + ' variants';
+
+    if (inv.defects.length) {
+      var card = el('div', 'card');
+      inv.defects.forEach(function (d) {
+        var row = el('div', 'defect');
+        row.appendChild(el('span', 'mk', d.kind === 'sku_collision' ? '!!' : '!'));
+        row.appendChild(el('span', 'hd', d.summary));
+        row.appendChild(el('div', 'dt', d.detail));
+        card.appendChild(row);
+      });
+      body.appendChild(card);
+    }
+
+    var cover = el('div', 'card');
+    if (inv.cover.length) {
+      inv.cover.forEach(function (c) {
+        var row = el('div', 'coverrow');
+        var d = el('span', 'd', c.daysOfCover + 'd');
+        if (c.daysOfCover <= 21) d.setAttribute('data-low', '1');
+        row.appendChild(d);
+        row.appendChild(el('span', 'nm', c.productTitle + (c.variantTitle && c.variantTitle !== 'Default Title' ? ' · ' + c.variantTitle : '')));
+        row.appendChild(el('span', 'rt', c.quantity + ' @ ' + c.dailyRate + '/day'));
+        cover.appendChild(row);
+      });
+    }
+    if (inv.unwatchedShare >= 0.5) {
+      var note = el('div', 'subline',
+        Math.round(inv.unwatchedShare * 100) + '% of unit volume sells past zero or carries a placeholder ' +
+        'quantity, so it has no readable stock level. Nothing here can warn before a shortage — ' +
+        'that check has to come from the production plan.');
+      note.style.paddingTop = inv.cover.length ? '10px' : '0';
+      cover.appendChild(note);
+    }
+    if (cover.childNodes.length) body.appendChild(cover);
+    if (!body.childNodes.length) body.appendChild(el('div', 'empty', 'Nothing to flag.'));
+  }
+
   function renderEmail(f) {
     var section = document.getElementById('n-email');
     var body = bodyOf('n-email');

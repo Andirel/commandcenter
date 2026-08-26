@@ -35,6 +35,7 @@ import { readPnl, financeSignals, latestClosedIndex, type PnlNode } from '../src
 import { parseSalesRows, salesTrend, commerceSignals } from '../src/signals/commerce.js';
 import { parseTrafficRows, trafficTrend, trafficSignals } from '../src/signals/traffic.js';
 import { parseFlowReport, summarizeEmail, emailSignals } from '../src/signals/email.js';
+import { parseVariants, summarizeInventory, inventorySignals } from '../src/signals/inventory.js';
 
 const args = process.argv.slice(2);
 /** Flags that take a value, so the positional pull path is not confused for one. */
@@ -64,6 +65,9 @@ const pull = JSON.parse(readFileSync(resolve(pullPath), 'utf8')) as {
   shopifySales?: { columns?: Array<{ name: string }>; rows?: unknown[][] };
   shopifySessions?: { columns?: Array<{ name: string }>; rows?: unknown[][] };
   klaviyoFlows?: unknown;
+  shopifyCatalogue?: unknown;
+  /** Units sold per SKU over the same window, for days of cover. */
+  shopifyUnitsSold?: Record<string, number>;
 };
 
 const config = loadConfig();
@@ -160,6 +164,38 @@ if (pull.klaviyoFlows && finance) {
     signals = signals.concat(emailSignals(summary, {
       totalBusinessRevenue: finance.open?.netSales ?? null,
     }).map((s) => StateSignal.parse(s)));
+  }
+}
+
+// Stock, and the catalogue it is counted against.
+if (pull.shopifyCatalogue && finance) {
+  const variants = parseVariants(pull.shopifyCatalogue, pull.shopifyUnitsSold ?? {});
+  if (variants.length) {
+    const health = summarizeInventory(variants);
+    const share = health.totalUnitsSold > 0 ? health.unusable.unitsSold / health.totalUnitsSold : 0;
+    finance.inventory = {
+      variants: health.variants,
+      unwatchedShare: Math.round(share * 1000) / 1000,
+      cover: health.cover.slice(0, 8),
+      defects: [
+        ...health.skuCollisions.map((c) => ({
+          kind: 'sku_collision' as const,
+          summary: `"${c.sku}" is on ${c.on.length} variants`,
+          detail: c.on.join('; '),
+        })),
+        ...health.duplicateProducts.map((d) => ({
+          kind: 'duplicate_product' as const,
+          summary: `"${d.title}" exists as ${d.count} products`,
+          detail: 'Each copy splits its own sales history.',
+        })),
+        ...health.variantDrift.filter((d) => d.spellings.length >= 3).map((d) => ({
+          kind: 'variant_drift' as const,
+          summary: `${d.measure} written ${d.spellings.length} ways on ${d.productTitle}`,
+          detail: d.spellings.map((x) => `"${x}"`).join(', '),
+        })),
+      ],
+    };
+    signals = signals.concat(inventorySignals(health).map((s) => StateSignal.parse(s)));
   }
 }
 

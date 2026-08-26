@@ -28,6 +28,7 @@ import { readPnl, financeSignals, latestClosedIndex, findNode, money, pct } from
 import { parseSalesRows, salesTrend, commerceSignals } from '../signals/commerce.js';
 import { parseTrafficRows, trafficTrend, trafficSignals } from '../signals/traffic.js';
 import { parseFlowReport, summarizeEmail, emailSignals } from '../signals/email.js';
+import { parseVariants, summarizeInventory, inventorySignals } from '../signals/inventory.js';
 import { RoutingRequest } from '../schemas/routing.js';
 import { Task } from '../schemas/tasks.js';
 
@@ -49,6 +50,7 @@ export {
   parseSalesRows, salesTrend, commerceSignals,
   parseTrafficRows, trafficTrend, trafficSignals,
   parseFlowReport, summarizeEmail, emailSignals,
+  parseVariants, summarizeInventory, inventorySignals,
   RoutingRequest, Task,
 };
 

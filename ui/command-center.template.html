@@ -153,6 +153,22 @@ header.top {
 .confirm .ev { margin-top: 7px; }
 .confirm .why { margin-top: 7px; font-size: 12px; color: var(--ink-3); }
 
+/* --- stock and catalogue --------------------------------------------------
+   Defects lead, because they are the actionable half. A store that oversells
+   deliberately has no cover figure to show, and saying that plainly beats an
+   empty table. */
+.defect { display: grid; grid-template-columns: 16px 1fr; gap: 3px 10px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.defect:last-child { border-bottom: 0; }
+.defect .mk { font: 600 12px/1.6 "IBM Plex Mono", ui-monospace, Menlo, monospace; color: var(--crit); }
+.defect .hd { font-size: 13.5px; font-weight: 600; }
+.defect .dt { grid-column: 2; font: 400 12px/1.55 "IBM Plex Mono", ui-monospace, Menlo, monospace; color: var(--ink-3); word-break: break-word; }
+.coverrow { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.coverrow:last-child { border-bottom: 0; }
+.coverrow .d { flex: none; width: 54px; font: 600 13px/1.4 "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.coverrow .d[data-low="1"] { color: var(--crit); }
+.coverrow .nm { flex: 1; min-width: 0; color: var(--ink-2); }
+.coverrow .rt { flex: none; font: 400 11.5px/1.4 "IBM Plex Mono", ui-monospace, Menlo, monospace; color: var(--ink-3); }
+
 /* --- connector status strip ----------------------------------------------- */
 .strip {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
@@ -502,6 +518,11 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: 12px; backgrou
       <section class="block" id="n-email">
         <div class="block-head"><h2>Email, by revenue per recipient</h2><span class="count"></span>
           <span class="note">Last 30 days</span></div>
+        <div class="body"><div class="empty">Sync to load.</div></div>
+      </section>
+      <section class="block" id="n-stock">
+        <div class="block-head"><h2>Stock and catalogue</h2><span class="count"></span>
+          <span class="note"></span></div>
         <div class="body"><div class="empty">Sync to load.</div></div>
       </section>
       <section class="block" id="n-signals">

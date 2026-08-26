@@ -171,6 +171,26 @@ export const StateFinance = z.object({
       revenuePerRecipient: z.number(), openRate: z.number(), clickRate: z.number(),
     })).default([]),
   }).nullable().default(null),
+  /**
+   * Stock, and the catalogue it is counted against.
+   *
+   * `cover` is deliberately sparse: a store that oversells has quantities that
+   * are a running sales counter rather than a stock level, and putting one of
+   * those through the arithmetic produces confident nonsense. `unwatchedShare`
+   * says how much of real volume that applies to.
+   */
+  inventory: z.object({
+    variants: z.number().int(),
+    unwatchedShare: z.number(),
+    cover: z.array(z.object({
+      productTitle: z.string(), variantTitle: z.string(), sku: z.string().nullable(),
+      quantity: z.number(), dailyRate: z.number(), daysOfCover: z.number().int(),
+    })).default([]),
+    defects: z.array(z.object({
+      kind: z.enum(['sku_collision', 'duplicate_product', 'variant_drift']),
+      summary: z.string(), detail: z.string(),
+    })).default([]),
+  }).nullable().default(null),
 }).nullable();
 export type StateFinance = z.infer<typeof StateFinance>;
 

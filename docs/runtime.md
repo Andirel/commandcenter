@@ -122,14 +122,11 @@ retailer onboarding portals, once the routing on those tasks is trusted.
    counterparties the config has never heard of, and those arrive with nobody
    assigned to chase them — visible and honest, but a gap. People already have
    a discovery lifecycle; organizations need the same one.
-2. **Inventory and days of cover from Shopify.** The one number missing that
-   can cost money within the hour — conversion is a slow dial, but stocking out
-   of a SKU while paying for traffic to it is an emergency.
-3. **Blended CAC on closed months.** Finaloop knows the spend and Shopify knows
+2. **Blended CAC on closed months.** Finaloop knows the spend and Shopify knows
    the new customers; nothing yet divides one by the other. Blended only —
    per-channel would need attribution these two connectors cannot honestly
    support.
-4. **Supabase**, when the ledger outgrows a JSON file on disk.
+3. **Supabase**, when the ledger outgrows a JSON file on disk.
 
 The ledger lives at `dist/ledger.json`, which is gitignored: it holds real
 company correspondence, like `dist/state.json`. Losing it loses the memory, not
@@ -413,6 +410,46 @@ recipients are excluded: a $40 flow to 12 people is arithmetic, not a finding.
 Both feed the same signal bus as finance, so a conversion or email finding can
 lift a task in Today on its own. `tests/channel-signals.test.ts` covers the
 sigma floor, the volume comparison, and the zero-revenue and single-flow edges.
+
+### Stock, and the catalogue it is counted against
+
+This started as one question — days of cover per SKU — and the real store
+answered it differently. Every variant carries `inventoryPolicy: CONTINUE`, so
+Shopify keeps selling past zero and the quantity decrements forever: a headline
+product sits at **−70,666 units**. That figure is a running sales counter, not
+a stock level, and days of cover derived from it would be confident nonsense —
+the same failure the unclosed-books rule exists to prevent.
+
+So cover is computed only where the number can bear it, and two more filters
+apply. A quantity above 50,000 was typed rather than counted (real values:
+998,064 and 999,410 against a few hundred units a month). And a runway beyond
+180 days is not a constraint — one variant showed **7,228 days**, and listing
+twenty years of cover buries the rows that are genuinely short. Against the
+live catalogue that leaves **zero** usable cover rows out of 25 variants, which
+is the true answer.
+
+What the same data does support is far more useful, and each item changes what
+someone does this morning:
+
+- **The same SKU on two different products.** Unambiguous and always wrong —
+  fulfilment, stock counts and every downstream feed key on it. Found by
+  variant identity rather than display label, because two variants sharing both
+  a SKU *and* a name is the worst case, not one to collapse.
+- **One product listed twice** under the same name, each copy splitting its own
+  sales history.
+- **One size written four ways** inside a single product — `6.53 oz`,
+  `6.530 oz`, `6.5oz`, `6.53 oz - 28 servings` — each with its own SKU. Matched
+  on the *measure*, not the words: two numbers within two per cent carrying the
+  same unit are the same size. This is very likely why the merchant-centre
+  audits keep finding mismatches.
+- **The consequence of overselling everywhere**, stated as a share of real
+  volume rather than a count of variants: 100% of unit volume has no readable
+  stock level, so nothing in the storefront can raise an alarm before a
+  shortage. That check has to come from the production plan instead.
+
+The tone matters. A store that oversells deliberately is not misconfigured — it
+is a made-to-order or 3PL-backed operation making a reasonable choice. What it
+needs to know is what that choice costs it.
 
 ### Strategy — proposals that become work
 
