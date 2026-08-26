@@ -318,10 +318,25 @@ export function carryForward(ledger: Ledger, seenKeys: Set<string>): LedgerEntry
  */
 export function applyViewerAnswers(
   ledger: Ledger,
-  answers: { completed?: Record<string, { at?: string; by?: string }>; stillOpen?: Record<string, string> },
+  answers: {
+    completed?: Record<string, { at?: string; by?: string }>;
+    stillOpen?: Record<string, string>;
+    /** Ticked off directly in the day plan. The plainest statement there is. */
+    done?: string[];
+  },
   syncAt: string,
 ): { ledger: Ledger; confirmed: number; reopened: number } {
-  const completed = answers.completed ?? {};
+  /*
+   * Three channels, one meaning. "Yes, done" on a confirmation and a tick in
+   * the day plan are the same human saying the same thing, and a tick that
+   * only survived until the next sync would have the plan quietly re-listing
+   * work somebody had already crossed off — which is the exact behaviour the
+   * ledger exists to end.
+   */
+  const completed: Record<string, { at?: string; by?: string }> = { ...(answers.completed ?? {}) };
+  for (const id of answers.done ?? []) {
+    if (!completed[id]) completed[id] = { at: syncAt, by: 'manual' };
+  }
   const stillOpen = answers.stillOpen ?? {};
   let confirmed = 0;
   let reopened = 0;

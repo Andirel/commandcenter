@@ -463,6 +463,18 @@ describe('answers given by hand', () => {
     expect(out.state.tasks).toHaveLength(0);
   });
 
+  it('close work ticked off directly in the day plan', async () => {
+    // A tick in the plan and "yes, done" on a confirmation are the same human
+    // saying the same thing. A tick that only survived until the next sync
+    // would have the plan re-listing work already crossed off.
+    const { ledger } = await sequence([{ events: [event()], now: DAY1 }]);
+    const key = ledger.entries[0]!.key;
+    const applied = applyViewerAnswers(ledger, { done: [key] }, DAY2.toISOString());
+    expect(applied.confirmed).toBe(1);
+    expect(applied.ledger.entries[0]!.status).toBe('completed');
+    expect(applied.ledger.entries[0]!.completion!.label).toBe('marked done');
+  });
+
   it('treat "still open" as evidence of life, so the silence clock restarts', async () => {
     const { ledger } = await sequence([
       { events: [event()], now: DAY1 },

@@ -248,6 +248,7 @@ if (priorLedger && existsSync(viewerPath)) {
     const viewer = JSON.parse(readFileSync(viewerPath, 'utf8')) as {
       completed?: Record<string, { at?: string; by?: string }>;
       stillOpen?: Record<string, string>;
+      done?: string[];
     };
     const applied = applyViewerAnswers(priorLedger, viewer, now.toISOString());
     priorLedger = applied.ledger;
