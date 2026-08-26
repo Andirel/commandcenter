@@ -114,9 +114,18 @@ export function findDueFollowUps(
 
     const followUpOwnerPersonId = resolveFollowUpOwner(commitment, ctx);
     const relationshipOwnerPersonId = resolveRelationshipOwner(commitment, ctx);
-    // With no due date there is nothing to be late against; the honest figure
-    // is how long it has been outstanding, which is what `elapsed` measures.
-    const overdue = commitment.dueDate ? businessDaysBetween(new Date(commitment.dueDate), now) : elapsed;
+    /*
+     * How long this has been outstanding, ALWAYS measured from the promise
+     * rather than from the last nudge.
+     *
+     * `elapsed` above is measured from the last follow-up, which is right for
+     * deciding whether another one is due and wrong for the figure a person
+     * reads. Reporting it made a second nudge look less urgent than the first
+     * -- "5 days outstanding" a fortnight after "5 days outstanding" -- when
+     * the whole point of escalating is that the number keeps climbing.
+     */
+    const from = commitment.dueDate ?? observed;
+    const overdue = from ? businessDaysBetween(new Date(from), now) : elapsed;
 
     out.push({
       commitment,

@@ -14,6 +14,7 @@ import { scoreTask } from '../priority/score.js';
 import { rankTasks, diffRankings, briefWorthy } from '../priority/rank.js';
 import { matchTask } from '../deduplication/match.js';
 import { detectCompletion } from '../completion/detect.js';
+import { extractCommitments, parseDue as parseCommitmentDue } from '../commitments/extract.js';
 import { resolveParticipant, isAutomatedSender, emailDomain } from '../people/resolve.js';
 import { discoverFromEvent } from '../people/discovery.js';
 import { normalizeOutlookMessage, isBulkMail } from '../normalization/outlook.js';
@@ -37,7 +38,7 @@ export {
   CONFIG, team, TeamModel,
   routeOwnership, classifyApproval, canActAutonomously, matchHints, shouldAggregateAsSignal,
   scoreTask, rankTasks, diffRankings, briefWorthy,
-  matchTask, detectCompletion,
+  matchTask, detectCompletion, extractCommitments, parseCommitmentDue,
   resolveParticipant, isAutomatedSender, emailDomain, discoverFromEvent,
   normalizeOutlookMessage, isBulkMail,
   normalizeZoomAssets, parseZoomSummaryMarkdown,

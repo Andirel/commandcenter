@@ -19,6 +19,7 @@ import { TeamModel } from '../capabilities/graph.js';
 import { routeOwnership } from '../routing/owner-selection.js';
 import { matchHints, shouldAggregateAsSignal } from '../routing/hints.js';
 import { matchTask } from '../deduplication/match.js';
+import { tokenSimilarity } from '../deduplication/similarity.js';
 import { scoreTask } from '../priority/score.js';
 import { rankTasks } from '../priority/rank.js';
 import { discoverFromEvent } from '../people/discovery.js';
@@ -30,6 +31,7 @@ import { Task as TaskSchema } from '../schemas/tasks.js';
 import type { StageContext, InterpretationRecord } from '../ai/stages.js';
 import { interpretEvent, triage, teamContext, capabilityContext } from '../ai/stages.js';
 import { canAutoComplete, detectCompletion, type CompletionSignal } from '../completion/detect.js';
+import { extractCommitments, type ExtractedCommitment } from '../commitments/extract.js';
 import { emptyLedger, openEntries, type Ledger, type LedgerEntry } from '../ledger/types.js';
 import {
   applyCompletion, carryForward, completionOptions, computeDelta, daysBetween,
@@ -100,6 +102,9 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
   const awaitingEntries: Array<{ entry: LedgerEntry; signal: CompletionSignal; reason: string }> = [];
   /** Keys closed by the event currently being processed, to suppress its echo. */
   let closedByThisEvent = new Set<string>();
+
+  /** Promises read out of the correspondence itself, keyed for dedup. */
+  const foundCommitments = new Map<string, ExtractedCommitment>();
 
   for (const event of input.events) {
     const isMail = event.sourceSystem === 'outlook' || event.sourceSystem === 'outlook_sent';
@@ -238,6 +243,21 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
 
     // Recurring patterns are signals, not tasks.
     if (shouldAggregateAsSignal(matchHints(request, config.routingRules))) continue;
+
+    /*
+     * --- Stage 1c: did anyone PROMISE anything? ------------------------------
+     *
+     * Also before triage, and for the same reason completion is. "I'll look
+     * into those and follow up" implies no work for us and triage is right to
+     * drop it — while being the only place a commitment we will later need to
+     * chase is ever recorded. Nobody writes these down anywhere else.
+     */
+    for (const found of extractCommitments(event)) {
+      // The earliest sighting wins: the follow-up clock should start when the
+      // promise was made, not when the thread was last re-read.
+      const prior = foundCommitments.get(found.id);
+      if (!prior || found.occurredAt < prior.occurredAt) foundCommitments.set(found.id, found);
+    }
 
     /*
      * --- Stage 5: dedup, against this run AND everything remembered ----------
@@ -466,7 +486,35 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
    * all: a nudge that does not remember it already nudged is just noise on a
    * schedule.
    */
-  const followUpResult = resolveFollowUps(input.commitments ?? [], ledger, team, config, now);
+  /*
+   * Hand-supplied commitments win on a collision. Someone who typed one in
+   * knows something the text did not say — often the real deadline — and an
+   * extraction should never overwrite that.
+   */
+  const supplied = input.commitments ?? [];
+  const suppliedIds = new Set(supplied.map((c) => c.id));
+  const extracted = [...foundCommitments.values()]
+    .filter((c) => !suppliedIds.has(c.id))
+    .map((c) => toStateCommitment(c, team, now))
+    /*
+     * Matching ids is not enough. The extractor derives its id from the words
+     * of the sentence; a person writing the same promise by hand words it
+     * differently, and both then get chased separately — two nudges to one
+     * counterparty about one promise, which is worse than missing it.
+     *
+     * The decisive test is the SOURCE, not the wording: a person and the
+     * extractor reading the same message in the same direction have found the
+     * same promise, however differently they phrased it. Direction has to be
+     * part of it — one message routinely carries a question we owe an answer
+     * to and a promise they made us, and those are two commitments, not one.
+     * Word overlap stays as a fallback for hand-written entries with no source.
+     */
+    .filter((c) => !supplied.some((s) =>
+      s.direction === c.direction &&
+      ((s.sourceRef && c.sourceRef && s.sourceRef === c.sourceRef) ||
+       tokenSimilarity(s.description, c.description) >= 0.4)));
+
+  const followUpResult = resolveFollowUps(supplied.concat(extracted), ledger, team, config, now);
   ledger = followUpResult.ledger;
 
   const delta: StateDelta | null = input.ledger
@@ -482,7 +530,7 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
     producedBy: input.ai ? (input.ai.client.name === 'session' ? 'session' : 'api') : 'metadata-only',
     window: input.window ?? { from: now.toISOString(), to: now.toISOString() },
     tasks,
-    commitments: input.commitments ?? [],
+    commitments: supplied.concat(extracted),
     triage: triageRows,
     meetings: input.meetings ?? [],
     signals: input.signals ?? [],
@@ -517,6 +565,45 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
  * request six months later is correctly read as new work.
  */
 const ECHO_WINDOW_DAYS = 45;
+
+/**
+ * An extracted promise in the shape the rest of the system speaks.
+ *
+ * `explicit` records whether the person said it outright or the extractor
+ * inferred it from a softer phrasing, because the follow-up wording should not
+ * claim someone promised something when they only offered to look.
+ */
+function toStateCommitment(c: ExtractedCommitment, team: TeamModel, now: Date): StateCommitment {
+  /*
+   * Prefer the counterparty the pipeline already resolved for this event over
+   * re-deriving one from the sender's domain. It uses more than the domain,
+   * and a commitment attributed to no organization can never be routed to a
+   * chaser — which is how a found promise ends up owned by nobody.
+   */
+  const org = (c.organizationId ? team.getOrganization(c.organizationId) : undefined)
+    ?? (c.speakerEmail ? team.getOrganizationByDomain(domainOf(c.speakerEmail)) : undefined);
+  const person = (c.speakerEmail ? team.getPersonByEmail(c.speakerEmail) : undefined)
+    ?? (c.speakerSlackId ? team.getPersonBySlackId(c.speakerSlackId) : undefined)
+    ?? (c.speakerName ? team.getPersonByAlias(c.speakerName) : undefined);
+  return {
+    id: c.id,
+    description: c.description,
+    direction: c.direction,
+    counterparty: org && org.organizationType !== 'internal' ? org.name : null,
+    owedBy: person?.name ?? c.speakerName,
+    dueDate: c.dueDate,
+    businessDaysOutstanding: businessDaysBetween(new Date(c.dueDate ?? c.occurredAt), now),
+    followUpOwner: null,
+    relationshipOwner: null,
+    explicit: c.label === 'explicit promise',
+    quote: c.quote,
+    sourceRef: c.sourceRef,
+  };
+}
+
+function domainOf(email: string): string {
+  return email.slice(email.lastIndexOf('@') + 1).toLowerCase();
+}
 
 /**
  * Is this draft the closing message re-read, rather than new work?

@@ -118,9 +118,10 @@ retailer onboarding portals, once the routing on those tasks is trusted.
 
 ## What to build next, in order
 
-1. **Commitment extraction from Sent Items.** The follow-up engine now runs and
-   remembers, but it can only chase commitments something else found. Reading
-   what we ourselves promised is the biggest remaining source.
+1. **Organization discovery.** Extraction now surfaces promises from
+   counterparties the config has never heard of, and those arrive with nobody
+   assigned to chase them — visible and honest, but a gap. People already have
+   a discovery lifecycle; organizations need the same one.
 2. **Inventory and days of cover from Shopify.** The one number missing that
    can cost money within the hour — conversion is a slow dial, but stocking out
    of a SKU while paying for traffic to it is an emergency.
@@ -306,6 +307,62 @@ question already answered is never asked again. "Still open" resets the silence
 clock exactly as a message would — a person saying so is the strongest evidence
 of life available.
 
+### Reading promises out of the correspondence
+
+The follow-up engine could chase anything it was handed, and was only ever
+handed commitments somebody had typed in by hand. That is exactly backwards:
+the promises worth chasing are the ones nobody wrote down, made in the third
+paragraph of an email on a Tuesday and forgotten by Thursday.
+
+`src/commitments/extract.ts` reads them out of the text. Finding sentences that
+sound like promises is the easy part; the value is entirely in refusing the
+four things that sound identical and are not — a **request** ("can you send the
+COA?"), a **suggestion** ("we should send it"), a **condition** ("if we proceed
+I'll send it") and an **auto-reply** ("I will be out until the 4th"). A false
+commitment produces a nudge to a real counterparty about something they never
+agreed to, which costs the relationship the system exists to protect, so the
+bar is high and the failure mode is silence.
+
+**Who owes is structural, not linguistic.** Mail we sent is us promising; mail
+we received is them promising; a colleague in chat is neither. Reading intent
+from the words would be far less reliable. A meeting transcript yields nothing
+at all — it has many speakers and the actor is only the host, so attributing
+every promise in the room to them is worse than extracting nothing.
+
+Three things real correspondence taught this code:
+
+- **Some disqualifiers are about the message, not the sentence.** A marketing
+  blast promises things in one line and carries its unsubscribe footer in
+  another; an out-of-office says "I'll respond when I return" after announcing
+  the absence. Judged sentence by sentence both yield a promise nobody made, so
+  auto-reply and bulk-mail markers are a verdict on the whole message while
+  requests and conditionals are judged line by line.
+- **A promise can point at something said earlier.** *"I plan on doing that
+  this week"* is real, and its description is useless alone. The referent is
+  where a human reader looks: one sentence up. Taken verbatim rather than
+  rewritten — a clumsy description next to the real quote is recoverable, an
+  invented one is not — and dropped entirely when there is nothing to point at.
+- **Boilerplate describes a business rather than promising anything.** *"As the
+  platform operates across 36 languages and 180+ countries, we will utilize AI
+  technology to translate."* Nobody can ever ask whether that got done, which is
+  the test a commitment has to pass. The rule that catches it is deliberately
+  narrow: a broader "starts with a subordinate clause" version would swallow
+  *"As we discussed on Friday, I'll send it over"*, one of the commonest ways a
+  real promise is phrased.
+
+**Deduplication against hand-written entries is decided by the source, not the
+wording.** A person and the extractor reading the same message in the same
+direction have found the same promise, however differently they phrased it —
+and two nudges to one counterparty about one promise is worse than missing it.
+Direction has to be part of the test: one message routinely carries a question
+we owe an answer to *and* a promise they made us, and those are two commitments.
+
+Run against a real week with the hand-written list removed entirely, it found
+two of the two entries that were genuinely promises, plus one nobody had
+recorded. The two it did not find were obligations arising from questions
+*asked of us* — which the pipeline already turns into tasks. That distinction
+is worth keeping: a request creates work, a promise creates something to chase.
+
 ### Chasing what we are owed
 
 `findDueFollowUps` existed from the first phase and had never run, because it
@@ -313,6 +370,9 @@ needs something a window cannot supply: how many times we have already chased,
 and when. Rebuilt each morning, every commitment looks un-chased, so the engine
 fires the first nudge daily — which is how a chasing tool becomes a nagging one
 and gets switched off in week two. The ledger holds the counters.
+
+It is now fed by `src/commitments/extract.ts` rather than by hand, so what it
+chases is whatever people actually promised.
 
 Memory also made a whole class of promise chaseable for the first time. **Most
 real commitments carry no date.** *"I will look into these hosts and follow
