@@ -101,7 +101,9 @@ body {
 /* Sibling rhythm comes from one flow container, not from per-element margins
    that collapse against each other in ways nobody can predict. */
 .flow { display: flex; flex-direction: column; gap: 20px; }
-.flow > * { margin: 0; }
+.flow > * { margin-top: 0; margin-bottom: 0; }   /* not `margin: 0` — that would
+   cancel the auto side-margins .col uses to centre, at equal specificity and
+   later in the cascade, and the narrow text would hang left of the wide blocks. */
 
 /* --- masthead ------------------------------------------------------------- */
 header.masthead { padding: 76px 0 0; }
