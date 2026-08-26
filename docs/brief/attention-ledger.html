@@ -1,0 +1,705 @@
+<title>The Attention Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ===========================================================================
+   Palette and type are inherited from the Command Center itself — cool grey
+   ground, deep teal, Fraunces over Archivo over Plex Mono. A brief about a
+   system should look like it came from that system.
+
+   Three theme states, not two: bare :root carries the full light palette,
+   prefers-color-scheme handles the un-stamped default, and [data-theme] wins
+   over both.
+   =========================================================================== */
+:root {
+  --ground:      #f4f6f8;
+  --surface:     #ffffff;
+  --surface-2:   #eceff3;
+  --line:        #d9dfe6;
+  --line-soft:   #e6eaef;
+  --ink:         #0e1319;
+  --ink-2:       #3d4855;
+  --ink-3:       #6b7885;
+  --accent:      #1f6f78;
+  --accent-ink:  #ffffff;
+  --accent-soft: #e2eff0;
+  --ok:          #2f6b4f;
+  --ok-soft:     #e3efe8;
+  --warn:        #8a5a10;
+  --warn-soft:   #f6eeda;
+  --crit:        #9d2f28;
+  --crit-soft:   #f8e6e4;
+  --shadow:      0 1px 2px rgba(14,19,25,.05), 0 6px 22px rgba(14,19,25,.055);
+  --radius:      7px;
+
+  --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --sans:  "Archivo", ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0e1319;
+    --surface:     #161d25;
+    --surface-2:   #1d262f;
+    --line:        #2c3742;
+    --line-soft:   #232d37;
+    --ink:         #e8edf2;
+    --ink-2:       #aab6c2;
+    --ink-3:       #7b8894;
+    --accent:      #4fb3ba;
+    --accent-ink:  #08191b;
+    --accent-soft: #16333a;
+    --ok:          #6dbd93;
+    --ok-soft:     #162c22;
+    --warn:        #d9a441;
+    --warn-soft:   #2e2413;
+    --crit:        #e07a72;
+    --crit-soft:   #331b19;
+    --shadow:      0 1px 2px rgba(0,0,0,.32), 0 6px 22px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #0e1319;
+  --surface:     #161d25;
+  --surface-2:   #1d262f;
+  --line:        #2c3742;
+  --line-soft:   #232d37;
+  --ink:         #e8edf2;
+  --ink-2:       #aab6c2;
+  --ink-3:       #7b8894;
+  --accent:      #4fb3ba;
+  --accent-ink:  #08191b;
+  --accent-soft: #16333a;
+  --ok:          #6dbd93;
+  --ok-soft:     #162c22;
+  --warn:        #d9a441;
+  --warn-soft:   #2e2413;
+  --crit:        #e07a72;
+  --crit-soft:   #331b19;
+  --shadow:      0 1px 2px rgba(0,0,0,.32), 0 6px 22px rgba(0,0,0,.28);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16.5px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- the reading column, and the two widths that break out of it ---------- */
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px 96px; }
+.col  { max-width: 660px; margin-left: auto; margin-right: auto; }
+.wide { max-width: 880px; margin-left: auto; margin-right: auto; }
+
+/* Sibling rhythm comes from one flow container, not from per-element margins
+   that collapse against each other in ways nobody can predict. */
+.flow { display: flex; flex-direction: column; gap: 20px; }
+.flow > * { margin: 0; }
+
+/* --- masthead ------------------------------------------------------------- */
+header.masthead { padding: 76px 0 0; }
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11.5px; font-weight: 500;
+  letter-spacing: .16em; text-transform: uppercase;
+  color: var(--accent);
+}
+h1 {
+  font-family: var(--serif);
+  font-optical-sizing: auto;
+  font-size: clamp(40px, 7.2vw, 66px);
+  font-weight: 600;
+  line-height: 1.03;
+  letter-spacing: -.022em;
+  text-wrap: balance;
+  margin: 14px 0 0;
+}
+.standfirst {
+  font-family: var(--serif);
+  font-size: clamp(19px, 2.4vw, 22.5px);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--ink-2);
+  text-wrap: pretty;
+  margin: 20px 0 0;
+}
+.byline {
+  display: flex; flex-wrap: wrap; gap: 8px 20px;
+  margin-top: 30px; padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+}
+.byline b { color: var(--ink-2); font-weight: 500; }
+
+/* --- sections ------------------------------------------------------------- */
+section { padding-top: 62px; }
+h2 {
+  font-family: var(--serif);
+  font-size: clamp(26px, 3.4vw, 33px);
+  font-weight: 600; line-height: 1.16;
+  letter-spacing: -.014em;
+  text-wrap: balance;
+  margin: 0 0 22px;
+}
+h3 {
+  font-family: var(--sans);
+  font-size: 17.5px; font-weight: 700;
+  letter-spacing: -.005em;
+  margin: 0 0 8px;
+}
+p { text-wrap: pretty; }
+a { color: var(--accent); }
+
+.lede { font-size: 18px; color: var(--ink-2); }
+.dim  { color: var(--ink-3); }
+strong { font-weight: 600; }
+em { font-style: italic; }
+
+/* --- the thesis: one sentence given the weight it deserves ---------------- */
+.thesis {
+  font-family: var(--serif);
+  font-size: clamp(23px, 3.1vw, 30px);
+  line-height: 1.32;
+  font-weight: 600;
+  letter-spacing: -.014em;
+  color: var(--ink);
+  text-wrap: balance;
+  padding: 4px 0 4px 24px;
+  border-left: 3px solid var(--accent);
+}
+
+/* --- failure list: the five ways noticing goes wrong ---------------------- */
+ul.reasons { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+ul.reasons li {
+  padding-left: 26px; position: relative;
+  color: var(--ink-2);
+}
+ul.reasons li::before {
+  content: ""; position: absolute; left: 3px; top: .68em;
+  width: 9px; height: 1.5px; background: var(--accent);
+}
+ul.reasons li b { color: var(--ink); font-weight: 600; }
+
+/* --- numbered rules ------------------------------------------------------- */
+/* Numbered because the rules genuinely are referred to by number in the
+   codebase and in review; the sequence carries meaning. */
+.rules { display: flex; flex-direction: column; gap: 34px; counter-reset: rule; }
+.rule { display: grid; grid-template-columns: 44px 1fr; gap: 0 18px; }
+.rule::before {
+  counter-increment: rule; content: counter(rule, decimal-leading-zero);
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: var(--accent); padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.rule h3 { grid-column: 2; }
+.rule p  { grid-column: 2; color: var(--ink-2); margin: 0 0 10px; }
+.rule p:last-child { margin-bottom: 0; }
+
+/* --- evidence: real message text, treated the way the product treats it --- */
+.ev {
+  font-family: var(--mono);
+  font-size: 13.5px; line-height: 1.6;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 13px 17px;
+}
+.ev .who { display: block; color: var(--ink-3); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 5px; }
+
+/* --- reversal: what it looked like, what was true ------------------------- */
+.reversal {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.reversal > div { background: var(--surface); padding: 20px 22px; }
+.reversal .k {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px;
+}
+.reversal .v {
+  font-family: var(--serif); font-size: clamp(24px, 3.6vw, 32px);
+  font-weight: 700; line-height: 1.05; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.reversal .sub { font-size: 13.5px; color: var(--ink-3); margin-top: 8px; line-height: 1.45; }
+.reversal .bad  .v { color: var(--crit); }
+.reversal .good .v { color: var(--ok); }
+
+/* --- callout cards for the three refusals --------------------------------- */
+.refusals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.refusal {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 20px 22px;
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 9px;
+}
+.refusal .n {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--crit);
+}
+.refusal h3 { margin: 0; font-size: 16px; }
+.refusal p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--ink-2); }
+
+/* --- figure --------------------------------------------------------------- */
+figure { margin: 0; }
+.figframe {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 26px 22px 20px;
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+.figframe svg { display: block; max-width: 100%; height: auto; min-width: 620px; margin: 0 auto; }
+figcaption { font-size: 14px; color: var(--ink-3); margin-top: 14px; line-height: 1.55; text-wrap: pretty; }
+
+/* --- fit table ------------------------------------------------------------ */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 15px; }
+thead th {
+  text-align: left; font-family: var(--mono); font-size: 11px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+  font-weight: 500; padding: 14px 20px; border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+tbody td { padding: 15px 20px; border-bottom: 1px solid var(--line-soft); vertical-align: top; color: var(--ink-2); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody td:first-child { color: var(--ink); font-weight: 600; width: 30%; }
+.fit { font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.fit-hi { color: var(--ok); }
+.fit-mid { color: var(--warn); }
+.fit-no { color: var(--crit); }
+
+/* --- three-question test -------------------------------------------------- */
+.qtest { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+.qtest .q { padding: 20px 22px; border-bottom: 1px solid var(--line-soft); }
+.qtest .q:last-child { border-bottom: 0; }
+.qtest .q p { margin: 0; }
+.qtest .ask { font-weight: 600; color: var(--ink); }
+.qtest .tell { font-size: 14.5px; color: var(--ink-3); margin-top: 6px !important; }
+.qtest .tell b { color: var(--accent); font-weight: 600; }
+
+/* --- what transfers ------------------------------------------------------- */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.split > div { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 20px 22px; box-shadow: var(--shadow); }
+.split h3 { font-size: 15px; margin-bottom: 12px; }
+.split ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 14.5px; color: var(--ink-2); }
+.split .keep h3 { color: var(--ok); }
+.split .rebuild h3 { color: var(--warn); }
+
+/* --- closing stat row ----------------------------------------------------- */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.stats div { background: var(--surface); padding: 18px 16px; }
+.stats .n { font-family: var(--serif); font-size: 27px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.stats .l { font-family: var(--mono); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); margin-top: 8px; line-height: 1.35; }
+
+footer {
+  margin-top: 72px; padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px; color: var(--ink-3); line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+  body { font-size: 16px; }
+  .wrap { padding: 0 20px 72px; }
+  header.masthead { padding-top: 52px; }
+  section { padding-top: 48px; }
+  .refusals, .split, .reversal { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .rule { grid-template-columns: 1fr; gap: 0; }
+  .rule::before { grid-column: 1; margin-bottom: 6px; }
+  .rule h3, .rule p { grid-column: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead col">
+    <div class="eyebrow">120/Life · internal brief</div>
+    <h1>The Attention Ledger</h1>
+    <p class="standfirst">An operating system for a ten-person company, built on one premise: the scarce resource is not time, money, or headcount. It is <em>noticing</em> — and in a small company, noticing is nobody's job.</p>
+    <div class="byline">
+      <span><b>Status</b> running on live data</span>
+      <span><b>Surface</b> Outlook · Slack · Zoom · Finaloop · Shopify · Klaviyo</span>
+      <span><b>Sends nothing</b> ever, on anyone's behalf</span>
+    </div>
+  </header>
+
+  <section class="col flow">
+    <h2>What this optimizes, and what it refuses to count</h2>
+    <p class="lede">Most systems that touch a company's work optimize for throughput — messages handled, tasks created, workflows fired. Ask them how they are doing and they will tell you how much they did.</p>
+    <p>This one answers a different question: <strong>how much useful progress the company made per unit of its people's attention</strong>, the founder's most of all. That single choice determines every design decision downstream, and it has one corollary worth stating plainly, because it rules out most of what gets built in this category:</p>
+    <p class="thesis">A system that produces more tasks has made things worse.</p>
+    <p>Under that rule, an automation that files forty emails into a queue is a cost, not a feature. The only things that earn a place are the ones that change what a person does in the next hour: a decision that is quietly blocking four people, a promise nobody wrote down, a number that means something different from what it appears to mean.</p>
+  </section>
+
+  <section class="col flow">
+    <h2>Capacity is not the problem</h2>
+    <p>In a company of ten, everybody already knows they are busy. What actually fails is narrower and more specific — and none of it shows up in anyone's inbox as a thing to do:</p>
+    <ul class="reasons">
+      <li><b>A supplier said "I'll follow up" and never gave a date.</b> Six weeks later, nobody has thought about it since. Undated promises are the ones that vanish, precisely because there is nothing to be late against.</li>
+      <li><b>A decision only the founder can make is sitting behind four people's work</b> — and none of them said so, because each of them is only blocked on their own piece.</li>
+      <li><b>Something got finished and nothing was ever closed</b>, so it keeps occupying a slot in everyone's head and a line in every list.</li>
+      <li><b>Ad spend rose 23% and sessions did not move</b>, but the spend lives in the accounting system and the sessions live in the storefront, and nobody had both open on the same day.</li>
+      <li><b>A five-minute approval that would have freed a colleague's entire day</b> got done at 4:30pm.</li>
+    </ul>
+    <p>In a large company, noticing all this is somebody's job — an ops team, a chief of staff, a project manager. In a small one it is nobody's, which is exactly what makes it worth building rather than buying.</p>
+  </section>
+
+  <section class="wide flow">
+    <h2 class="col" style="max-width:660px">The part almost everyone skips</h2>
+    <p class="col" style="max-width:660px">Reading a week of email and producing a ranked list is the easy half, and it is where most tools stop. The problem only shows up in month two: a system with no memory rebuilds the same queue every morning from the same evidence. Nothing can ever be finished, and nothing can be compared to yesterday.</p>
+
+    <figure>
+      <div class="figframe">
+        <svg viewBox="0 0 880 470" role="img" aria-label="Two diagrams of the same intake pipeline. Without memory, a week of evidence flows through triage, interpretation and routing into a queue that is discarded and rebuilt at the next run. With a ledger, the same flow passes through a reconcile step; evidence also closes items in the ledger, the ledger carries unfinished work forward to be re-ranked against today, and a person's confirmations answer what the system could not infer.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,1 L9,5 L0,9 z" fill="currentColor"></path>
+            </marker>
+            <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,1 L9,5 L0,9 z" fill="var(--accent, #1f6f78)"></path>
+            </marker>
+            <marker id="ar-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,1 L9,5 L0,9 z" fill="currentColor" opacity=".38"></path>
+            </marker>
+          </defs>
+
+          <g font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.4" fill="currentColor" opacity=".55">
+            <text x="30" y="24">WITHOUT MEMORY</text>
+            <text x="30" y="264">WITH THE LEDGER</text>
+          </g>
+
+          <!-- ---------- top band: the intake loop alone ---------- -->
+          <g fill="none" stroke="currentColor" stroke-width="1.25">
+            <rect x="30"  y="60" width="175" height="54" rx="6"></rect>
+            <rect x="250" y="60" width="200" height="54" rx="6"></rect>
+            <rect x="495" y="60" width="115" height="54" rx="6"></rect>
+          </g>
+          <g font-family="Archivo, sans-serif" font-size="13" fill="currentColor" text-anchor="middle">
+            <text x="117" y="83">Last 7 days of</text>
+            <text x="117" y="99">evidence</text>
+            <text x="350" y="92">triage · interpret · route</text>
+            <text x="552" y="92">Queue</text>
+          </g>
+          <g stroke="currentColor" stroke-width="1.25" marker-end="url(#ar)">
+            <line x1="205" y1="87" x2="242" y2="87"></line>
+            <line x1="450" y1="87" x2="487" y2="87"></line>
+          </g>
+          <line x1="610" y1="87" x2="684" y2="87" stroke="currentColor" stroke-width="1.25"
+                stroke-dasharray="4 4" opacity=".45" marker-end="url(#ar-d)"></line>
+          <g font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity=".55">
+            <text x="694" y="84">discarded;</text>
+            <text x="694" y="99">rebuilt tomorrow</text>
+          </g>
+          <text x="30" y="152" font-family="Archivo, sans-serif" font-size="12.5" fill="currentColor" opacity=".62">Yesterday's finished work returns on today's evidence. The queue only grows.</text>
+
+          <line x1="30" y1="196" x2="850" y2="196" stroke="currentColor" stroke-width="1" opacity=".18"></line>
+
+          <!-- ---------- bottom band: intake plus memory ---------- -->
+          <g fill="none" stroke="currentColor" stroke-width="1.25">
+            <rect x="30"  y="298" width="175" height="54" rx="6"></rect>
+            <rect x="250" y="298" width="200" height="54" rx="6"></rect>
+            <rect x="495" y="298" width="115" height="54" rx="6"></rect>
+            <rect x="660" y="298" width="175" height="54" rx="6"></rect>
+          </g>
+          <rect x="380" y="400" width="175" height="48" rx="6" fill="none"
+                stroke="var(--accent, #1f6f78)" stroke-width="2"></rect>
+          <rect x="640" y="400" width="195" height="48" rx="6" fill="none"
+                stroke="currentColor" stroke-width="1.25"></rect>
+
+          <g font-family="Archivo, sans-serif" font-size="13" fill="currentColor" text-anchor="middle">
+            <text x="117" y="321">Last 7 days of</text>
+            <text x="117" y="337">evidence</text>
+            <text x="350" y="330">triage · interpret · route</text>
+            <text x="552" y="330">reconcile</text>
+            <text x="747" y="322">Queue, ordered</text>
+            <text x="747" y="338">for today</text>
+            <text x="737" y="429">You: confirm · correct</text>
+          </g>
+          <text x="467" y="429" font-family="Archivo, sans-serif" font-size="13.5" font-weight="600"
+                text-anchor="middle" fill="var(--accent, #1f6f78)">Ledger</text>
+
+          <g stroke="currentColor" stroke-width="1.25" marker-end="url(#ar)">
+            <line x1="205" y1="325" x2="242" y2="325"></line>
+            <line x1="450" y1="325" x2="487" y2="325"></line>
+            <line x1="610" y1="325" x2="652" y2="325"></line>
+          </g>
+
+          <!-- memory arrows, in the accent: the three edges the top band lacks -->
+          <g stroke="var(--accent, #1f6f78)" stroke-width="1.5" fill="none">
+            <path d="M117,352 V424 H372" marker-end="url(#ar-a)"></path>
+            <line x1="575" y1="352" x2="575" y2="394" marker-end="url(#ar-a)"></line>
+            <line x1="530" y1="394" x2="530" y2="358" marker-end="url(#ar-a)"></line>
+            <line x1="640" y1="424" x2="563" y2="424" marker-end="url(#ar-a)"></line>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--accent, #1f6f78)">
+            <text x="245" y="417" text-anchor="middle">closes on evidence</text>
+            <text x="588" y="378">records</text>
+            <text x="521" y="378" text-anchor="end">carries forward</text>
+            <text x="601" y="417" text-anchor="middle">answers</text>
+          </g>
+          <text x="30" y="466" font-family="Archivo, sans-serif" font-size="12.5" fill="currentColor" opacity=".62">Unfinished work survives its window and is re-scored against today's clock — which is how an approaching deadline finally lifts it.</text>
+        </svg>
+      </div>
+      <figcaption>The same intake pipeline, with and without a ledger. The teal edges are the entire difference: evidence can <em>close</em> work, unfinished work is <em>carried forward</em> rather than rebuilt, and a person's answers are <em>recorded</em> so the same question is never asked twice.</figcaption>
+    </figure>
+  </section>
+
+  <section class="col flow">
+    <h2>Five rules that do most of the work</h2>
+    <div class="rules">
+
+      <div class="rule">
+        <h3>Ownership is six roles, not one</h3>
+        <p>Real work has a primary owner, a project manager, a decision maker, an approver, collaborators, and very often an external counterparty. Collapsing all of that into a single <span style="font-family:var(--mono);font-size:.92em">assignee</span> field is where most tools lose the plot.</p>
+        <p>The consequence that matters: <strong>needing the founder is not the same as being the founder's job.</strong> A production slip needs Adi's decision and Mike's execution. Assign it to Adi and you have just moved a week of operations onto the wrong desk — quietly, and with the system's blessing.</p>
+      </div>
+
+      <div class="rule">
+        <h3>Attention is priced by what it costs, not by what is at stake</h3>
+        <p>Approving a $50,000 production run and approving an Instagram post both take about five minutes. Ordering a day by value at stake would therefore get it systematically wrong.</p>
+        <p>So each item is priced by its <strong>mode</strong> — decide, approve, delegate, do, follow up — and the plan is budgeted against the hours actually left. A plan that needs nine hours at 3pm is not a plan, and saying otherwise is how a daily tool stops being opened.</p>
+      </div>
+
+      <div class="rule">
+        <h3>The value of unblocking someone decays through the day</h3>
+        <p>Approving Chase's content at 9am buys a full day of his work. The identical approval at 4:30pm buys nothing until tomorrow.</p>
+        <p>So a five-minute approval that frees a colleague outranks an hour of the founder's own higher-scoring work in the morning — and stops outranking it by late afternoon. <strong>The order changes with the clock</strong>, which no static priority list can do.</p>
+      </div>
+
+      <div class="rule">
+        <h3>A number is only true once its period is closed</h3>
+        <p>The books close monthly, by the 10th. Until a month closes, its expense side is incomplete — bills not entered, transactions not categorized — so any profit figure drawn from it is fiction wearing the costume of fact.</p>
+        <p>Profit and expense conclusions therefore come only from closed periods, compared against the previous closed period, with the month named so that "now" is never assumed. The open month appears as revenue only, labelled with the date its books close. This one rule <a href="#reversal">reversed the system's headline finding</a> the first time it ran.</p>
+      </div>
+
+      <div class="rule">
+        <h3>A change must clear the noise before it is reported</h3>
+        <p>A weekly conversion rate moves several tenths of a point on nothing at all. A system that announces every wobble teaches its reader to ignore it — and then it is ignored on the day it matters.</p>
+        <p>So movements are converted into <strong>standard errors</strong> and anything under three sigma is reported as what it is: within chance. Restraint is the feature. A dashboard that never says "this is probably nothing" is not measuring, it is decorating.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="wide flow">
+    <h2 class="col" style="max-width:660px">Three refusals</h2>
+    <p class="col" style="max-width:660px">Everything above is judgment, and judgment can be wrong. What makes the system safe to leave running is not its accuracy — it is what it declines to do when it is confident.</p>
+    <div class="refusals">
+      <div class="refusal">
+        <div class="n">Never</div>
+        <h3>Sends as you</h3>
+        <p>Not one message leaves in anyone's name. When a supplier is overdue, the output is a draft, addressed to whoever owns the chasing, quoting what the supplier actually said. The system contributes the noticing — the part that fails — not the relationship.</p>
+      </div>
+      <div class="refusal">
+        <div class="n">Never</div>
+        <h3>Closes what it cannot safely close</h3>
+        <p>A task wrongly left open is visible and costs a moment to dismiss. One wrongly closed disappears, along with whatever it was worth. So inference closes only what is both confident and cheap to be wrong about; anything consequential becomes a question with the evidence quoted.</p>
+      </div>
+      <div class="refusal">
+        <div class="n">Never</div>
+        <h3>Treats silence as completion</h3>
+        <p>Work that stops appearing has usually either been finished with nobody saying so, or quietly died. Those need opposite responses. After three weeks of silence an item leaves the daily plan and is asked about <em>once</em> — a daily "is this still live?" is the same nagging in slower form.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wide flow" id="reversal">
+    <h2 class="col" style="max-width:660px">Three times reality corrected it</h2>
+    <p class="col" style="max-width:660px">Every rule above exists because the system got something wrong against real data first. These are the three that changed the architecture.</p>
+
+    <div class="col flow" style="max-width:660px">
+      <h3>1 · The loss that was a profit</h3>
+      <p>On its first real run the system led with a confident headline: the company was losing money and ad spend had exploded. It was reading the open month, whose expenses were half-entered. The closed months said close to the opposite.</p>
+    </div>
+
+    <div class="reversal">
+      <div class="bad">
+        <div class="k">What the open month showed</div>
+        <div class="v">−$53k</div>
+        <div class="sub">Net, with ad spend apparently up 61%. Drawn from a month whose bills were not yet entered.</div>
+      </div>
+      <div class="good">
+        <div class="k">What the closed books said</div>
+        <div class="v">+$34k</div>
+        <div class="sub">Profit <em>improving</em>, with spend up 23%. Nearly the opposite conclusion, from the same report.</div>
+      </div>
+    </div>
+
+    <div class="col flow" style="max-width:660px">
+      <p class="dim">The fix was not a better model. It was a rule about when a number is allowed to be believed — and it is the reason the finance panel now names the month it is talking about and shows the open one as revenue only.</p>
+
+      <h3>2 · The status list that closed a whole project</h3>
+      <p>Completion is inferred from evidence, because nobody at a ten-person company reliably closes tasks. Run against real Slack traffic, it read this and marked a four-marketplace listing project finished:</p>
+    </div>
+
+    <div class="col" style="max-width:660px">
+      <div class="ev">
+        <span class="who">Slack · marketplace channel</span>
+        The product images were updated on the marketplaces. Walmart — waiting for approval, do you want me to list the 28ct stickpack? Faire — can we activate the 28ct stickpack in draft? <b style="color:var(--crit)">TikTok — done.</b> Amazon — waiting for image processing.
+      </div>
+    </div>
+
+    <div class="col flow" style="max-width:660px">
+      <p>One line out of four was finished, and that line closed everything. The rule that came out of it: <strong>any unfinished marker anywhere in a message settles it.</strong> That is a progress report, not a completion, however confident the rest of it sounds. A second rule fell out of the same investigation — <strong>a message cannot finish the work it asked for</strong>, since overlapping windows mean Monday's request gets read again on Tuesday and was closing the task it had opened.</p>
+
+      <h3>3 · The promise with no date</h3>
+      <p>The follow-up engine had been written months earlier and had never once fired. It measured lateness against a due date, and the most common promise in real business correspondence has no date at all:</p>
+    </div>
+
+    <div class="col" style="max-width:660px">
+      <div class="ev">
+        <span class="who">Email · media partner</span>
+        I will look into these hosts and follow up.
+      </div>
+    </div>
+
+    <div class="col flow" style="max-width:660px">
+      <p>Nothing to be late against, so it was never chased — which means the promises being dropped were exactly the ones the system was structurally blind to. With memory, the clock starts when we first heard it. Replayed against the real inbox, that one change surfaced the commitment at <strong>ten business days outstanding</strong>, quoting the partner's own words back to whoever has to send the nudge.</p>
+    </div>
+  </section>
+
+  <section class="wide flow">
+    <h2 class="col" style="max-width:660px">Where this transfers</h2>
+    <p class="col" style="max-width:660px">The temptation is to say "any small business", which is both true and useless. There is a sharper predictor, and it is not industry or headcount:</p>
+    <p class="thesis col" style="max-width:660px">How many outside parties can make you a promise?</p>
+    <p class="col" style="max-width:660px">Every one of them is a place a ball gets dropped, and none of them are in your systems. A company with three suppliers and one channel does not need this. A company with a contract manufacturer, a 3PL, two retail buyers, a media agency, a marketplace and a lab has a dropped-ball surface no individual can hold in their head — and no software they own is watching it, because the evidence lives in threads.</p>
+
+    <div class="qtest col" style="max-width:660px">
+      <div class="q">
+        <p class="ask">Count the outside parties who owed you something last month.</p>
+        <p class="tell">Over eight, and nobody's job is tracking them? <b>Strong fit.</b> Under four? Buy a shared spreadsheet.</p>
+      </div>
+      <div class="q">
+        <p class="ask">If your two busiest people took a week off, how much would stop?</p>
+        <p class="tell">Most of it? <b>Attention is your binding constraint</b>, and everything here is aimed at it.</p>
+      </div>
+      <div class="q">
+        <p class="ask">Where would a new hire look to find out what is outstanding?</p>
+        <p class="tell">"Read my email and ask around" means <b>you have evidence but no state</b> — which is the exact gap the ledger fills.</p>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Business shape</th><th>Fit</th><th>What carries the value</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Consumer brand, 5–50 people</td>
+            <td class="fit fit-hi">Strong</td>
+            <td>The original case. Contract manufacturers, 3PLs, retail buyers, agencies and marketplaces all making commitments by email, with a founder as the decision bottleneck and real numbers scattered across three systems.</td>
+          </tr>
+          <tr>
+            <td>Agency or professional services firm</td>
+            <td class="fit fit-hi">Strong</td>
+            <td>Commitments <em>are</em> the product, and "who owns this client thread" is genuinely ambiguous rather than merely undocumented. The follow-up engine is worth more here than anywhere else.</td>
+          </tr>
+          <tr>
+            <td>B2B with long implementation cycles</td>
+            <td class="fit fit-hi">Strong</td>
+            <td>Multi-party, slow-moving work where a dropped ball is expensive and stays invisible for weeks. Deadline-aware re-ranking matters most when the gap between cause and consequence is long.</td>
+          </tr>
+          <tr>
+            <td>Import/export, brokerage, franchise ops</td>
+            <td class="fit fit-hi">Strong</td>
+            <td>Enormous counterparty surface, almost everything by email, and approval classes that genuinely differ by transaction rather than by policy theatre.</td>
+          </tr>
+          <tr>
+            <td>Regulated small operation (clinic, lab, food)</td>
+            <td class="fit fit-mid">Partial</td>
+            <td>Approval routing and the never-auto-send rule become the point rather than a footnote — but the finance and funnel layers are mostly irrelevant, so roughly half the system is inert.</td>
+          </tr>
+          <tr>
+            <td>Work already in a system of record people update</td>
+            <td class="fit fit-no">Poor</td>
+            <td>If your tracker is accurate, you do not need inference over evidence — you need a better view of what you already have. This whole architecture exists because the truth lives in threads.</td>
+          </tr>
+          <tr>
+            <td>High-volume repetitive operations</td>
+            <td class="fit fit-no">Poor</td>
+            <td>Support queues, claims, ticketed fulfilment. The economics are per-ticket, so throughput automation is the right tool. Allocating attention optimizes a variable that is not binding.</td>
+          </tr>
+          <tr>
+            <td>Large organization with a real org chart</td>
+            <td class="fit fit-no">Poor</td>
+            <td>A learned capability graph adds nothing over an accurate directory, and an ops function already does the noticing. The gap this fills is specifically the gap where nobody's job is to notice.</td>
+          </tr>
+          <tr>
+            <td>Solo operator</td>
+            <td class="fit fit-no">Poor</td>
+            <td>No delegation surface, so ownership routing, approval classes and the unblocking rule are all inert. What remains is a to-do list with unusually good manners.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="wide flow">
+    <h2 class="col" style="max-width:660px">What moves to a new company, and what gets rebuilt</h2>
+    <p class="col" style="max-width:660px">The honest split is unusually clean, because the business-specific parts were deliberately pushed into configuration rather than code.</p>
+    <div class="split">
+      <div class="keep">
+        <h3>Transfers unchanged</h3>
+        <ul>
+          <li>The ledger: identity across runs, carry-forward, dormancy</li>
+          <li>Completion detection and its refusals</li>
+          <li>Follow-up cadence, escalation and the undated-promise clock</li>
+          <li>Deduplication across email, chat and calls</li>
+          <li>Approval classes and the never-auto-send boundary</li>
+          <li>The day plan, including the decay rule</li>
+          <li>Statistical gating on every reported movement</li>
+        </ul>
+      </div>
+      <div class="rebuild">
+        <h3>Rebuilt per business</h3>
+        <ul>
+          <li>The capability graph — who is actually good at what</li>
+          <li>Business areas and their typical decision makers</li>
+          <li>Which counterparties exist and who owns each relationship</li>
+          <li>Connectors, and which numbers are worth pulling</li>
+          <li>Finance rules: when the books close, what "true" means in them</li>
+          <li>Priority weights and what triggers an escalation</li>
+        </ul>
+      </div>
+    </div>
+    <p class="col dim" style="max-width:660px">In practice that is ten configuration files against fifty-seven code modules. Standing this up somewhere new is a week of describing how a company actually works — not a rebuild.</p>
+  </section>
+
+  <section class="wide flow">
+    <h2 class="col" style="max-width:660px">Where it stands</h2>
+    <div class="stats">
+      <div><div class="n">297</div><div class="l">tests, all passing</div></div>
+      <div><div class="n">6</div><div class="l">live connectors</div></div>
+      <div><div class="n">40</div><div class="l">capabilities tracked</div></div>
+      <div><div class="n">0</div><div class="l">messages ever sent on anyone's behalf</div></div>
+    </div>
+    <p class="col" style="max-width:660px">It runs on real correspondence, real books and real storefront data today, and opens as a single page: what to do and in what order, everything outstanding, the numbers that matter, and a short list of things the company could choose to take on. Nothing in it is theoretical — every rule above was written after the system got the corresponding thing wrong.</p>
+    <p class="col" style="max-width:660px">The next three things are known and small: reading our own sent mail so the system finds the promises <em>we</em> made, days of inventory cover from the storefront, and blended customer acquisition cost on closed months — the one number that decides whether the growth plan works, which nothing currently computes because the spend and the customers live in different systems.</p>
+  </section>
+
+  <footer class="col">
+    Figures cited are drawn from live company data and are illustrative of the mechanism rather than a financial statement. The system holds real correspondence; it is private by default and shares nothing without a deliberate action.
+  </footer>
+
+</div>
