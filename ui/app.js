@@ -747,9 +747,17 @@
     });
     rawState = rawState.concat(generatedTasks())
       .filter(function (t) { return STATE.dismissed.indexOf(t.id) < 0; })
-      // Confirmed done in this page. The next sync folds these into the
-      // ledger; until then the queue must not keep showing finished work.
-      .filter(function (t) { return !STATE.completed[t.id]; });
+      /*
+       * Finished in this page, by either route. Answering "yes, done" on a
+       * confirmation and ticking the item off in the day plan are the same
+       * statement, so the queue has to honour both — checking only the first
+       * left work you had already crossed off still sitting under "Decisions
+       * you need to make". The plan keeps showing its own ticks struck
+       * through, because there the point is seeing what you cleared today.
+       */
+      .filter(function (t) {
+        return !STATE.completed[t.id] && STATE.done.indexOf(t.id) < 0;
+      });
 
     // Work that has gone quiet is real but is not today's plan. It gets its
     // own group in the Queue, where the question "still live?" belongs.

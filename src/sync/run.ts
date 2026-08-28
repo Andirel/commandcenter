@@ -313,7 +313,11 @@ export async function runSync(input: SyncInput): Promise<SyncOutput> {
           task: { ...existing.task, lastActivityAt: event.occurredAt,
                   deadline: interpretation?.deadline ? isoOrNull(interpretation.deadline) : existing.task.deadline },
           state: { ...existing.state, summary: (event.summary ?? '').slice(0, 240) || existing.state.summary,
-                   link: event.rawReference ?? existing.state.link, occurredAt: event.occurredAt },
+                   link: event.rawReference ?? existing.state.link, occurredAt: event.occurredAt,
+                   // What the NEW message said it is worth. `refresh` ratchets
+                   // this upward only — spreading the existing state alone
+                   // would hide a first hard number behind an earlier guess.
+                   valueAtStake: request.valueAtStake ?? existing.state.valueAtStake },
         }, now.toISOString()));
         seenKeys.add(existing.key);
       }

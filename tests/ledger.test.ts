@@ -153,6 +153,26 @@ describe('a reply on the same thread', () => {
     expect(states[1]!.tasks[0]!.seenCount).toBe(2);
   });
 
+  it('lets a later message raise the stakes, but never lower them', async () => {
+    // "Six figures, roughly" becoming "$180,000" is the first hard number
+    // anyone has and the whole point of the decision. A thin reply deflating a
+    // major decision is the accident the no-overwrite rule exists to prevent.
+    const priced = ai({ default: interpretation({ valueAtStake: 180000 }) });
+    const vague = ai({ default: interpretation({ valueAtStake: 500 }) });
+
+    const up = await sequence([
+      { events: [event()], now: DAY1, ai: ai({ default: interpretation({ valueAtStake: 100000 }) }) },
+      { events: [event({ sourceExternalId: 'evt-2' })], now: DAY2, ai: priced },
+    ]);
+    expect(up.states[1]!.tasks[0]!.valueAtStake).toBe(180000);
+
+    const down = await sequence([
+      { events: [event()], now: DAY1, ai: ai({ default: interpretation({ valueAtStake: 100000 }) }) },
+      { events: [event({ sourceExternalId: 'evt-2' })], now: DAY2, ai: vague },
+    ]);
+    expect(down.states[1]!.tasks[0]!.valueAtStake).toBe(100000);
+  });
+
   it('keeps the routing decided when there was context to decide it', async () => {
     // "Any update?" carries almost no signal. Re-routing on it would let the
     // thinnest message in a thread overwrite the richest.

@@ -94,6 +94,22 @@ export function matchToLedger(
  */
 export function refresh(entry: LedgerEntry, draft: { task: Task; state: StateTask }, syncAt: string): LedgerEntry {
   const newer = (draft.task.lastActivityAt ?? draft.state.occurredAt) > entry.lastActivityAt;
+
+  /*
+   * Value at stake ratchets UP and never down.
+   *
+   * The general rule is that a later message must not rewrite the routing
+   * decided when there was context to decide it — otherwise "thanks, received"
+   * re-prices a major decision. But a reply that turns "six figures, roughly"
+   * into "$180,000, $150,000, $250,000" is the opposite case: it is the first
+   * hard number anyone has, and the whole point of the decision. Letting it
+   * raise the stakes costs nothing, while letting a thin reply LOWER them is
+   * exactly the accident the rule exists to prevent.
+   */
+  const raisedValue = Math.max(
+    entry.state.valueAtStake ?? 0,
+    draft.state.valueAtStake ?? 0,
+  ) || null;
   return LedgerEntry.parse({
     ...entry,
     task: { ...entry.task, lastActivityAt: newer ? draft.task.lastActivityAt ?? entry.lastActivityAt : entry.task.lastActivityAt,
@@ -104,6 +120,7 @@ export function refresh(entry: LedgerEntry, draft: { task: Task; state: StateTas
       link: newer ? draft.state.link ?? entry.state.link : entry.state.link,
       occurredAt: newer ? draft.state.occurredAt : entry.state.occurredAt,
       deadline: entry.state.deadline ?? draft.state.deadline,
+      valueAtStake: raisedValue,
     },
     lastSeenAt: syncAt,
     lastActivityAt: newer ? draft.task.lastActivityAt ?? entry.lastActivityAt : entry.lastActivityAt,
