@@ -15,7 +15,8 @@
     "validate:config": "tsx scripts/validate-config.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "routing:explain": "tsx scripts/explain-routing.ts"
+    "routing:explain": "tsx scripts/explain-routing.ts",
+    "agents:review": "tsx scripts/agent-architecture-review.ts"
   },
   "dependencies": {
     "@types/pg": "^8.23.1",
